@@ -493,9 +493,11 @@ pub(crate) mod test_support {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::egt::Egt;
+    use crate::TableIndexer;
     use crate::selection::TableSelector;
+    use EgtSide::{SideNotToMove as Sntm, SideToMove as Stm};
     use shakmaty::{CastlingMode, fen::Fen};
+    use test_support::{pawn_group, with_pawns};
 
     fn position(fen: &str) -> Chess {
         fen.parse::<Fen>()
@@ -549,6 +551,113 @@ mod tests {
                 .collect();
             expected.sort();
             assert_eq!(dependencies, expected, "{name}");
+        }
+    }
+
+    #[test]
+    fn naming_uses_next_occupied_slot_and_side_traversal() {
+        for (order, expected) in [
+            (vec![Stm, Sntm], "KPao_KPao"),
+            (vec![Sntm, Stm], "KPa_KPa"),
+            (vec![Stm, Stm, Sntm], "KPaPao_KPao"),
+            (vec![Stm, Sntm, Sntm], "KPao_KPaPao"),
+            (vec![Stm, Sntm, Stm], "KPaoPa_KPao"),
+            (vec![Sntm, Stm, Sntm], "KPao_KPaoPa"),
+            (vec![Stm, Stm, Sntm, Stm, Sntm, Sntm], "KPaPaoPao_KPaPaoPao"),
+        ] {
+            let id = with_pawns("K_K", &[pawn_group(File::A, &order)]);
+            assert_eq!(id.name().as_str(), expected, "{order:?}");
+            assert_eq!(TableId::parse(expected).unwrap(), id);
+        }
+    }
+
+    #[test]
+    fn naming_round_trips_every_pawn_word_through_six_slots() {
+        for len in 1..=6 {
+            let mut names = std::collections::HashSet::new();
+            for word in 0..1usize << len {
+                let order: Vec<_> = (0..len)
+                    .map(|i| if word & (1 << i) == 0 { Stm } else { Sntm })
+                    .collect();
+                let id = with_pawns("K_K", &[pawn_group(File::A, &order)]);
+                let name = id.name();
+                assert!(names.insert(name), "duplicate name for {order:?}");
+                assert_eq!(TableId::parse(&name).unwrap(), id);
+            }
+        }
+    }
+
+    #[test]
+    fn naming_sorts_files_and_preserves_nonpawn_names() {
+        let id = with_pawns(
+            "KQN_K",
+            &[
+                pawn_group(File::H, &[Stm]),
+                pawn_group(File::B, &[Stm, Sntm]),
+            ],
+        );
+        assert_eq!(id.name().as_str(), "KQNPboPh_KPbo");
+        for name in ["K_K", "KQ_K", "KQQ_K", "KQRBN_KR", "KPaPa_KPh", "KPaPh_K"] {
+            assert_eq!(TableId::parse(name).unwrap().name().as_str(), name);
+        }
+    }
+
+    #[test]
+    fn naming_mixed_file_without_flags_is_explicitly_unopposed() {
+        let id = parse_oriented("KPdPe_KPePePe").unwrap();
+        assert_eq!(
+            id,
+            with_pawns(
+                "K_K",
+                &[
+                    pawn_group(File::D, &[Stm]),
+                    pawn_group(File::E, &[Sntm, Sntm, Sntm, Stm]),
+                ]
+            )
+        );
+    }
+
+    #[test]
+    fn naming_rejects_invalid_grammar_and_opposed_flags() {
+        for name in [
+            "",
+            "K",
+            "K_K_K",
+            "_K",
+            "KK_K",
+            "K_KK",
+            "KQQQQQQQ_K",
+            "KPaPaPaPaPaPa_KPb",
+            "KPaPaPaPaPaPaPa_K",
+            "K_Q",
+            "Kk_K",
+            "K P a_K",
+            "KPaO_K",
+            "KP_K",
+            "KPi_K",
+            "KPo_K",
+            "Ko_K",
+            "KPa oo_K",
+            "KPaoo_KPao",
+            "KPao_K",
+            "KPa_KPao",
+            "KPao_KPa",
+            "KPaPao_KPaPa",
+            "KPaPa_KPaoPao",
+            "KPaPaPaPa_KPaPaPa",
+            "QK_K",
+            "KRQ_K",
+            "KPaQ_K",
+            "KPbPa_K",
+            "KPa_KPhPa",
+        ] {
+            assert!(
+                matches!(
+                    TableId::parse(name),
+                    Err(EgtError::InvalidEndgameName { .. })
+                ),
+                "accepted {name:?}"
+            );
         }
     }
 
@@ -699,7 +808,7 @@ mod tests {
                 if table.n_pieces() > 4 {
                     continue;
                 }
-                let egt = Egt::new(&table);
+                let egt = TableIndexer::new(&table);
                 for turn in [Color::White, Color::Black] {
                     for index in (0..egt.index_range()).step_by((egt.index_range() / 16).max(1)) {
                         let Ok(position) = egt.position_from_index(index, turn) else {

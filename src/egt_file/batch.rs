@@ -6,7 +6,7 @@ use shakmaty::Chess;
 use super::{Frame, Source, TableFile};
 use crate::outcome::PackedOutcome;
 use crate::table_id::TableId;
-use crate::{DtcOutcome, Egt, EgtError, EgtResult};
+use crate::{DtcOutcome, EgtError, EgtResult, TableIndexer};
 
 /// Job-scoped tables loaded before workers borrow them immutably.
 /// All enumerated dependencies must exist and their decompressed data must fit
@@ -63,7 +63,7 @@ impl BatchReader {
             .expect("table absent from prepared dependencies")
     }
 
-    pub(crate) fn egt(&self, id: &TableId) -> &Egt {
+    pub(crate) fn egt(&self, id: &TableId) -> &TableIndexer {
         self.table(id).0.egt()
     }
 

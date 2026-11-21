@@ -8,7 +8,7 @@ use self::solver::{TableState, solve_pair};
 use crate::egt_file::{BatchReader, Source};
 use crate::report::{generation_summary, print_table_stats};
 use crate::selection::{TablePair, plan_pairs};
-use crate::{AggregateStats, Egt, EgtResult, EgtStats, resolve_selectors};
+use crate::{AggregateStats, EgtResult, EgtStats, TableIndexer, resolve_selectors};
 
 #[derive(Default, Clone, Copy)]
 struct WinLoss<T> {
@@ -83,7 +83,7 @@ fn generate_pair(source: &Source, pair: &TablePair) -> EgtResult<Vec<EgtStats>> 
     base.ensure_writable()?;
     let setup_start = Instant::now();
     let mut tables = ids()
-        .map(|id| TableState::new(Egt::new(id)))
+        .map(|id| TableState::new(TableIndexer::new(id)))
         .collect::<EgtResult<Vec<_>>>()?;
     let setup_time = setup_start.elapsed();
     let timings = solve_pair(&mut tables, pair.reflected, &reader)?;

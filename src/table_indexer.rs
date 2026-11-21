@@ -3,7 +3,7 @@
 //!
 //! # Detailed indexing algorithm
 //!
-//! [`Indexer::position_to_index`] maps a chess position to an integer in
+//! `TableIndexer::position_to_index` maps a chess position to an integer in
 //! `0..index_range`. For tables with pawns, ranks are normalized so that STM
 //! pawns move toward increasing ranks.
 //!
@@ -130,7 +130,7 @@ const N_KING_PAIRS: usize = 462;
 // but positions where both kings are on the a1-h8 diagonal are intentionally not
 // canonicalized using other pieces.
 //
-// This is a property of the board alone, so it is shared by all `Indexer`s rather
+// This is a property of the board alone, so it is shared by all `TableIndexer`s rather
 // than rebuilt and stored per sub-table. The tables are flat to keep the lookups
 // down to a single indexed load.
 struct KingsMap {
@@ -289,13 +289,13 @@ fn filled<T: Copy + Default>(n: usize) -> ArrayVec<T, MAX_PIECES> {
     std::iter::repeat_n(T::default(), n).collect()
 }
 
+/// An immutable indexing descriptor, in either horizontal orientation.
 #[derive(Clone, Debug)]
-pub(super) struct Indexer {
-    pub(super) n_pieces: usize,
-
-    pub(super) n_pawns: usize,
-
-    pub(super) index_range: usize,
+pub struct TableIndexer {
+    id: TableId,
+    n_pieces: usize,
+    n_pawns: usize,
+    index_range: usize,
 
     // Pawnful tables whose complete pawn key is invariant under file reflection.
     symmetric_pawns: bool,
@@ -317,9 +317,11 @@ pub(super) struct Indexer {
     nonking_combinations: usize,
 }
 
-impl Indexer {
-    /// Builds the indexing plan in file order, then KQRBN with STM before SNTM.
-    pub(super) fn new(id: &TableId) -> Self {
+impl TableIndexer {
+    /// Builds an indexing plan for a validated table identity.
+    /// Pieces are ordered by pawn file, then by non-pawn role (KQRBN), with
+    /// the side to move first within each non-pawn role.
+    pub fn new(id: &TableId) -> Self {
         let n_pieces = id.n_pieces();
         let n_pawns = id.n_pawns();
         let symmetric_pawns = n_pawns > 0 && id.symmetric_pawns();
@@ -381,6 +383,7 @@ impl Indexer {
             0
         };
         Self {
+            id: *id,
             n_pieces,
             n_pawns,
             index_range,
@@ -393,6 +396,43 @@ impl Indexer {
             nonpawn_combinations,
             nonking_combinations,
         }
+    }
+
+    /// The number of physical pieces, including pawns and kings.
+    pub(crate) fn n_pieces(&self) -> usize {
+        self.n_pieces
+    }
+
+    /// Positions per generation summary block, following permutation geometry.
+    pub(crate) fn summary_block_size(&self) -> usize {
+        let n = self.n_pieces();
+        (65 - n) * (66 - n)
+    }
+
+    /// Positions per compressed frame; identical-piece groups may cross boundaries.
+    pub(crate) fn frame_size(&self) -> usize {
+        self.summary_block_size() * (67 - self.n_pieces()) * 2
+    }
+
+    /// The number of pawns in this table's material.
+    pub fn n_pawns(&self) -> usize {
+        self.n_pawns
+    }
+
+    /// Whether this table contains no pawns.
+    pub fn is_pawnless(&self) -> bool {
+        self.n_pawns() == 0
+    }
+
+    /// The number of indexed entries, including invalid and redundant positions.
+    /// Table-local indices lie in `0..self.index_range()`.
+    pub fn index_range(&self) -> usize {
+        self.index_range
+    }
+
+    /// The table identity in this indexer's horizontal orientation.
+    pub fn id(&self) -> TableId {
+        self.id
     }
 
     fn compute_piece_squares(nonpawns: &mut [IndexerPieceGroup], n_pawns: usize) {
@@ -409,12 +449,17 @@ impl Indexer {
         }
     }
 
-    pub(super) fn position_to_index(&self, position: &Chess) -> usize {
+    /// Encodes a no-castling position matching this table's material, pawn files,
+    /// and same-file pawn color order. The caller must establish that the
+    /// position belongs to this table before encoding it.
+    pub(crate) fn position_to_index(&self, position: &Chess) -> usize {
         self.position_to_index_impl::<false>(position)
     }
 
-    // Encodes the horizontal reflection without constructing another Chess.
-    pub(super) fn reflected_position_to_index(&self, position: &Chess) -> usize {
+    /// Encodes the horizontal reflection of a no-castling position.
+    /// The reflected position must match this table's material, pawn files,
+    /// and same-file pawn color order.
+    pub(crate) fn reflected_position_to_index(&self, position: &Chess) -> usize {
         self.position_to_index_impl::<true>(position)
     }
 
@@ -491,7 +536,11 @@ impl Indexer {
         pawn_index * self.nonpawn_combinations + self.cpidx_to_index(&pidx)
     }
 
-    pub(super) fn position_from_index(
+    /// Decodes a symmetry-reduced position with the requested side to move.
+    /// Returns the rejection reason for an out-of-range index or invalid position.
+    /// Castling rights are absent; en passant rights are retained only when legal.
+    /// Impossible checks are accepted, as in table generation.
+    pub fn position_from_index(
         &self,
         index: usize,
         side_to_move: Color,
@@ -502,7 +551,9 @@ impl Indexer {
         crate::position::position_from_setup(self.setup_from_index(index, side_to_move))
     }
 
-    pub(super) fn position_from_index_unchecked(&self, index: usize, side_to_move: Color) -> Chess {
+    /// Decodes an index already accepted by `position_from_index` for this table and turn.
+    /// Skips all position validation, including legal en passant. Panics if out of range.
+    pub(crate) fn position_from_index_unchecked(&self, index: usize, side_to_move: Color) -> Chess {
         assert!(index < self.index_range, "position index out of range");
         Chess::from_setup_unchecked(
             self.setup_from_index(index, side_to_move),
@@ -550,21 +601,14 @@ impl Indexer {
         self.coord_to_setup(ep_file, &coord, side_to_move)
     }
 
-    // Pawnless positions are reduced to a canonical form through rotations and reflections
-    // to take advantage of symmetries, so normally each index corresponds to 8 equivalent
-    // position. However, if both kings are on a long diagonal, the diagonal symmetry is not
-    // used and the correspoding index represents only 4 equivalent positions.
-    // In particular, positions with the kings on the diagonal and some other piece outside
-    // the diagonal have a symmetric that is in principle equivalent, but is assigned a
-    // separate index.
-    // `diagonal_symmetric(idx)` returns:
-    //  - `None` if the corresponding position does not have both kings on a long diagonal
-    //    (i.e. `idx` represents 8 equivalent positions)
-    //  - `Some(other_idx)` if the corresponding position has both kings on a long diagonal
-    //    (i.e. `idx` represents 4 equivalent positions), with `other_idx` being the index
-    //    of the symmetrical position along the diagonal. `other_idx` will be equal to `idx`
-    //    for positions with all pieces on the diagonal.
-    pub(super) fn diagonal_symmetric(&self, index: usize) -> Option<usize> {
+    /// Returns the diagonal-reflected index for a pawnless entry whose kings lie
+    /// on a long diagonal, or `None` otherwise. Both indices represent equivalent
+    /// positions but are stored separately. The returned index equals `index`
+    /// when all pieces lie on the diagonal.
+    ///
+    /// # Panics
+    /// Panics if this table is pawnless and `index` is out of range.
+    pub fn diagonal_symmetric(&self, index: usize) -> Option<usize> {
         if self.n_pawns != 0 {
             return None;
         }
@@ -911,12 +955,131 @@ impl Indexer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::table_id::test_support::{pawn_group, with_pawns};
+    use crate::table_id::{
+        parse_oriented,
+        test_support::{pawn_group, with_pawns},
+    };
     use EgtSide::{SideNotToMove as SNTM, SideToMove as STM};
     use shakmaty::PositionError;
 
+    #[test]
+    fn table_specific_block_sizes() {
+        for (name, pieces, pawns, summary, frame) in [
+            ("K_K", 2, 0, 4032, 524160),
+            ("KQ_K", 3, 0, 3906, 499968),
+            ("KQ_KR", 4, 0, 3782, 476532),
+            ("KBBB_K", 5, 0, 3660, 453840),
+            ("KPaPa_KPb", 5, 3, 3660, 453840),
+            ("KQQPaoPa_KPao", 7, 3, 3422, 410640),
+            ("KNNNNNN_K", 8, 0, 3306, 390108),
+        ] {
+            let indexer = TableIndexer::new(&TableId::parse(name).unwrap());
+            assert_eq!(indexer.id().name().as_str(), name);
+            assert_eq!(indexer.n_pieces(), pieces);
+            assert_eq!(indexer.n_pawns(), pawns);
+            assert_eq!(indexer.summary_block_size(), summary);
+            assert_eq!(indexer.frame_size(), frame);
+        }
+    }
+
+    #[test]
+    fn reflected_index_matches_board_reflection() {
+        use crate::position::mirror_horizontally;
+
+        for name in ["KPa_K", "KPd_KPe", "KPaPaPd_KPbPf", "KNN_K"] {
+            let indexer = TableIndexer::new(&TableId::parse(name).unwrap());
+            let stride = (indexer.index_range() / 256).max(1);
+            let mut checked = 0;
+            for turn in [Color::White, Color::Black] {
+                for idx in (0..indexer.index_range()).step_by(stride) {
+                    if let Ok(position) = indexer.position_from_index(idx, turn) {
+                        let source = mirror_horizontally(&position);
+                        assert_eq!(
+                            indexer.reflected_position_to_index(&source),
+                            idx,
+                            "{name}, {turn:?}, {idx}"
+                        );
+                        checked += 1;
+                    }
+                }
+            }
+            assert!(checked > 0, "no valid samples for {name}");
+        }
+    }
+
+    #[test]
+    fn reflected_index_preserves_legal_en_passant() {
+        use crate::position::mirror_horizontally;
+        use shakmaty::fen::Fen;
+
+        for (fen, name) in [
+            ("7k/8/8/3Pp3/8/8/8/K7 w - e6 0 1", "KPe_KPd"),
+            ("7k/8/8/8/3pP3/8/8/K7 b - e3 0 1", "KPe_KPd"),
+            ("7k/8/8/3Pp3/8/4P3/4P3/K7 w - e6 0 1", "KPdPdoPe_KPdo"),
+            ("7k/4p3/4p3/8/3pP3/8/8/K7 b - e3 0 1", "KPdPdoPe_KPdo"),
+        ] {
+            let position: Chess = fen
+                .parse::<Fen>()
+                .unwrap()
+                .into_position(CastlingMode::Standard)
+                .unwrap();
+            assert!(position.legal_ep_square().is_some());
+            let reflected = mirror_horizontally(&position);
+            assert_eq!(
+                reflected.legal_ep_square(),
+                position.legal_ep_square().map(|sq| sq.flip_horizontal())
+            );
+            let indexer = TableIndexer::new(&parse_oriented(name).unwrap());
+            assert_eq!(
+                indexer.reflected_position_to_index(&position),
+                indexer.position_to_index(&reflected),
+                "{fen}"
+            );
+        }
+    }
+
+    #[test]
+    fn diagonal_symmetry_excludes_pawnful_tables() {
+        let indexer = TableIndexer::new(&TableId::parse("KPd_K").unwrap());
+        assert_eq!(indexer.diagonal_symmetric(0), None);
+    }
+
+    #[test]
+    fn decode_encode_round_trips() {
+        for name in [
+            "KPa_K",
+            "KB_K",
+            "KQ_KR",
+            "KPdPe_KPePePe",
+            "KPdPePf_KPePe",
+            "KPePe_KPdPf",
+        ] {
+            let indexer = TableIndexer::new(&parse_oriented(name).unwrap());
+            let range = indexer.index_range();
+            let stride = if indexer.n_pieces() <= 3 {
+                1
+            } else {
+                (range / 8192).max(1)
+            };
+            for turn in Color::ALL {
+                let mut accepted = 0;
+                for index in (0..range).step_by(stride).chain(std::iter::once(range - 1)) {
+                    if let Ok(position) = indexer.position_from_index(index, turn) {
+                        assert_eq!(
+                            indexer.position_to_index(&position),
+                            index,
+                            "{name}, {turn:?}"
+                        );
+                        accepted += 1;
+                    }
+                }
+                assert!(accepted > 0, "{name}, {turn:?}");
+            }
+        }
+    }
+
     fn coord_to_position(
-        indexer: &Indexer,
+        indexer: &TableIndexer,
         ep_file: Option<File>,
         coord: &CoordBuf,
         turn: Color,
@@ -924,8 +1087,8 @@ mod tests {
         crate::position::position_from_setup(indexer.coord_to_setup(ep_file, coord, turn)).ok()
     }
 
-    fn indexer(groups: &[(File, u8)]) -> Indexer {
-        Indexer::new(&with_pawns("K_K", groups))
+    fn indexer(groups: &[(File, u8)]) -> TableIndexer {
+        TableIndexer::new(&with_pawns("K_K", groups))
     }
 
     // Independent oracle: Shakmaty's full validation plus legal EP filtering.
@@ -938,7 +1101,7 @@ mod tests {
             .filter(|position| position.legal_ep_square() == ep_square)
     }
 
-    fn assert_decoder_matches(indexer: &Indexer, index: usize, turn: Color) -> Option<Chess> {
+    fn assert_decoder_matches(indexer: &TableIndexer, index: usize, turn: Color) -> Option<Chess> {
         let expected = checked_position_from_setup(indexer.setup_from_index(index, turn));
         assert_eq!(
             indexer.position_from_index(index, turn).ok(),
@@ -957,8 +1120,7 @@ mod tests {
     #[test]
     fn symmetric_pawns_pack_kings_and_round_trip_reflections() {
         for name in ["KPaPh_K", "KNNPaPh_K", "KPcPf_KPdPe", "KPaoPho_KPaoPho"] {
-            let egt = crate::egt::Egt::new(&crate::TableId::parse(name).unwrap());
-            let indexer = &egt.indexer;
+            let indexer = TableIndexer::new(&TableId::parse(name).unwrap());
             assert!(indexer.symmetric_pawns, "{name}");
             let kings = &indexer.nonpawns[0];
             let n = 64 - indexer.n_pawns;
@@ -983,7 +1145,7 @@ mod tests {
                 let mut checked = 0;
                 let stride = (indexer.index_range / 1024).max(1);
                 for idx in (0..indexer.index_range).step_by(stride) {
-                    let Some(position) = assert_decoder_matches(indexer, idx, turn) else {
+                    let Some(position) = assert_decoder_matches(&indexer, idx, turn) else {
                         continue;
                     };
                     assert_eq!(indexer.position_to_index(&position), idx, "{name}, {idx}");
@@ -1010,8 +1172,7 @@ mod tests {
             "KPdPdoPe_KPdo",
             "KNNNNNN_K",
         ] {
-            let egt = crate::egt::Egt::new(&crate::TableId::parse(name).unwrap());
-            let indexer = &egt.indexer;
+            let indexer = TableIndexer::new(&TableId::parse(name).unwrap());
             let mut accepted = 0;
             let mut rejected = 0;
             for turn in [Color::White, Color::Black] {
@@ -1025,7 +1186,7 @@ mod tests {
                     .step_by(stride)
                     .chain(std::iter::once(indexer.index_range - 1))
                 {
-                    if assert_decoder_matches(indexer, index, turn).is_some() {
+                    if assert_decoder_matches(&indexer, index, turn).is_some() {
                         accepted += 1;
                     } else {
                         rejected += 1;
@@ -1069,7 +1230,7 @@ mod tests {
             let raw = Chess::from_setup_unchecked(original.clone(), CastlingMode::Standard);
             let (id, reflected) = TableId::from_position(&raw).unwrap();
             assert!(!reflected);
-            let indexer = Indexer::new(&id);
+            let indexer = TableIndexer::new(&id);
             for setup in [original.clone(), original.into_mirrored()] {
                 // Normal encoding drops illegal EP rights. Advance one pawn slice to
                 // force the geometric EP variant and test whether decoding accepts it.
@@ -1340,8 +1501,8 @@ mod tests {
             ("KQRB_KQRN", &[][..], "KkQqRrBn"),
             ("KQQPao_KQPao", &[File::A][..], "pPKkQQq"),
         ] {
-            let id = crate::table_id::parse_oriented(name).unwrap();
-            let indexer = Indexer::new(&id);
+            let id = parse_oriented(name).unwrap();
+            let indexer = TableIndexer::new(&id);
             assert_eq!(
                 indexer
                     .pawns
@@ -1365,7 +1526,7 @@ mod tests {
     fn pawnless_mapping_keeps_existing_indices() {
         use shakmaty::fen::Fen;
 
-        let indexer = Indexer::new(&TableId::parse("KR_K").unwrap());
+        let indexer = TableIndexer::new(&TableId::parse("KR_K").unwrap());
         assert!(indexer.pawns.is_empty());
         assert!(indexer.pawn_map.is_none());
         assert_eq!(indexer.index_range, 462 * 62);

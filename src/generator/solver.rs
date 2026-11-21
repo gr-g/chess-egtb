@@ -43,7 +43,7 @@ use shakmaty::{Color, Position};
 use super::WinLoss;
 use super::unmoves::{quiet_unmoves, symmetry_adjusted_move_counter};
 use crate::ConversionType;
-use crate::egt::Egt;
+use crate::TableIndexer;
 use crate::egt_file::BatchReader;
 use crate::error::{EgtResult, try_allocate};
 use crate::outcome::PackedOutcome;
@@ -236,7 +236,7 @@ struct InitCounts {
 /// (loss at ply 0), stalemate, win or loss at ply 1 by conversion, or unknown
 /// with its move counter.
 fn initialize_table(
-    egt: &Egt,
+    egt: &TableIndexer,
     values: &mut [AtomicU16],
     summary: &PlySummary,
     reader: &BatchReader,
@@ -346,7 +346,7 @@ fn initialize_table(
 }
 
 pub(super) struct TableState {
-    egt: Egt,
+    egt: TableIndexer,
     values: Vec<AtomicU16>,
     summary: PlySummary,
     invalid: InvalidCounts,
@@ -356,7 +356,7 @@ pub(super) struct TableState {
 }
 
 impl TableState {
-    pub(super) fn new(egt: Egt) -> EgtResult<Self> {
+    pub(super) fn new(egt: TableIndexer) -> EgtResult<Self> {
         let values = Self::allocate_values(egt.id(), egt.index_range())?;
         Ok(Self {
             summary: PlySummary::new(egt.index_range(), egt.summary_block_size()),
@@ -375,7 +375,7 @@ impl TableState {
         Ok(values)
     }
 
-    pub(super) fn into_parts(self) -> (Egt, Vec<AtomicU16>, WinLoss<u16>, InvalidCounts) {
+    pub(super) fn into_parts(self) -> (TableIndexer, Vec<AtomicU16>, WinLoss<u16>, InvalidCounts) {
         (self.egt, self.values, self.maxima, self.invalid)
     }
 }
@@ -550,8 +550,8 @@ mod tests {
     use crate::table_id::TableId;
     use crate::{EgtError, Tablebase};
 
-    fn table(name: &str) -> Egt {
-        Egt::new(&TableId::parse(name).unwrap())
+    fn table(name: &str) -> TableIndexer {
+        TableIndexer::new(&TableId::parse(name).unwrap())
     }
 
     fn atomic_values(values: Vec<PackedOutcome>) -> Vec<AtomicU16> {

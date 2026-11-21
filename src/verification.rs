@@ -6,7 +6,7 @@ use shakmaty::{Chess, Color, Move, Position};
 use crate::egt_file::{BatchReader, Source};
 use crate::report::format_timing;
 use crate::table_id::TableId;
-use crate::{ConversionType, DtcOutcome, Egt, EgtError, EgtResult, resolve_selectors};
+use crate::{ConversionType, DtcOutcome, EgtError, EgtResult, TableIndexer, resolve_selectors};
 
 /// Verifies the selected tables against their legal successors.
 pub(crate) fn verify(
@@ -57,7 +57,7 @@ fn verify_tables(source: &Source, ids: &[TableId]) -> EgtResult<(usize, usize)> 
 }
 
 /// Verifies independent blocks and returns the number of valid, unique positions.
-fn verify_egt(reader: &BatchReader, egt: &Egt) -> EgtResult<usize> {
+fn verify_egt(reader: &BatchReader, egt: &TableIndexer) -> EgtResult<usize> {
     let tablename = egt.id();
     let local_range = egt.index_range();
 
@@ -93,7 +93,12 @@ fn verify_egt(reader: &BatchReader, egt: &Egt) -> EgtResult<usize> {
         .try_reduce(|| 0, |a, b| Ok(a + b))
 }
 
-fn verify_block(reader: &BatchReader, egt: &Egt, start: usize, end: usize) -> EgtResult<usize> {
+fn verify_block(
+    reader: &BatchReader,
+    egt: &TableIndexer,
+    start: usize,
+    end: usize,
+) -> EgtResult<usize> {
     let tablename = egt.id();
     let outcomes = reader.read_chunk(&tablename, start, end)?;
     let fail = |local_idx: usize, reason: &str| EgtError::ConsistencyCheckFailed {
@@ -223,7 +228,7 @@ mod tests {
         use crate::outcome::PackedOutcome;
 
         let dir = TestDir::new("verify_invalid_outcome");
-        let egt = Egt::new(&crate::TableId::parse("K_K").unwrap());
+        let egt = TableIndexer::new(&crate::TableId::parse("K_K").unwrap());
         let index = (0..egt.index_range())
             .find(|&index| egt.position_from_index(index, Color::White).is_ok())
             .unwrap();

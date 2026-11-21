@@ -3,7 +3,7 @@
 use shakmaty::{Color, EnPassantMode, fen::Epd};
 
 use super::WinLoss;
-use crate::egt::Egt;
+use crate::TableIndexer;
 use crate::outcome::PackedOutcome;
 use crate::position::InvalidCounts;
 use crate::stats::{EgtStats, LongestDtcPosition, Totals};
@@ -21,7 +21,7 @@ impl StatsAccumulator {
         &mut self,
         outcome: PackedOutcome,
         local_idx: usize,
-        egt: &Egt,
+        egt: &TableIndexer,
         maxima: WinLoss<u16>,
     ) {
         // Statistics exclude the redundant half even though compression retains it.
@@ -70,7 +70,7 @@ impl StatsAccumulator {
 
     pub(super) fn build(
         self,
-        egt: &Egt,
+        egt: &TableIndexer,
         maxima: WinLoss<u16>,
         invalid: InvalidCounts,
         bytes: u64,
@@ -116,8 +116,8 @@ mod tests {
     use crate::ConversionType;
     use crate::table_id::TableId;
 
-    fn table(name: &str) -> Egt {
-        Egt::new(&TableId::parse(name).unwrap())
+    fn table(name: &str) -> TableIndexer {
+        TableIndexer::new(&TableId::parse(name).unwrap())
     }
 
     #[test]

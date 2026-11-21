@@ -201,7 +201,7 @@ main building blocks:
   in a compact 16-bit value.
 - **Tablebase organization and naming conventions**: Partitions positions into
   endgame tables and assigns each table a name and storage path.
-- **Indexing layer (`Egt`, `Indexer`)**: Maps positions to a contiguous index
+- **Indexing layer (`TableIndexer`)**: Maps positions to a contiguous index
   range `[0, index_range)` within each table.
 - **Retrograde analysis**: `solve_pair` in
   [`src/generator/solver.rs`](src/generator/solver.rs) propagates known outcomes
@@ -411,8 +411,8 @@ number of _Positions with castling rights_.
 
 #### Indexing and symmetries
 
-For each endgame table, [`Egt`](src/egt.rs) holds an `Indexer`, which encodes
-and decodes positions in the contiguous range `[0, index_range)`. The indexer
+[`TableIndexer`](src/table_indexer.rs) encodes and decodes positions in the
+contiguous range `[0, index_range)` for each endgame table. The indexer
 uses board symmetries so that equivalent positions share the same index,
 except for the pawnless diagonal-symmetry case described below.
 
@@ -466,10 +466,10 @@ together into a combined pawn index. A precomputed array maps a base-six
 encoding of the pawn ranks and an en passant selector to this index.
 For each combined pawn index, the positions of the other pieces are
 combinatorially encoded without overlaps into a fixed-size range. The
-`Egt::index_range()` covers one contiguous range for the entire table, combining
-the pawn and non-pawn indices.
+`TableIndexer::index_range()` covers one contiguous range for the entire table,
+combining the pawn and non-pawn indices.
 
-For the detailed algorithm, see the [`egt::indexer`](src/egt/indexer.rs)
+For the detailed algorithm, see the [`table_indexer`](src/table_indexer.rs)
 module documentation.
 
 ### Retrograde analysis

@@ -28,7 +28,7 @@
 
 use shakmaty::{Bitboard, Chess, Color, EnPassantMode, Move, Position, Role, attacks};
 
-use crate::egt::Egt;
+use crate::TableIndexer;
 
 // Whether both kings stand on one of the two long diagonals. Kings on the h1-a8
 // diagonal end up on the a1-h8 diagonal after canonicalization, so both
@@ -197,8 +197,8 @@ fn emit_pawnful_predecessors(setup: &shakmaty::Setup, f: &mut impl FnMut(Chess))
 /// Emits predecessors of an index already validated for this table and White.
 /// Propagation only passes resolved entries, which initialization validated.
 pub(super) fn quiet_unmoves<F>(
-    table: &Egt,
-    twin: &Egt,
+    table: &TableIndexer,
+    twin: &TableIndexer,
     local_index: usize,
     mirrored: bool,
     mut f: F,
@@ -270,18 +270,18 @@ mod tests {
     use crate::table_id::TableId;
     use std::collections::HashMap;
 
-    fn tables(material: &str) -> Vec<Egt> {
+    fn tables(material: &str) -> Vec<TableIndexer> {
         TableSelector::parse(material)
             .unwrap()
             .resolve()
             .unwrap()
             .into_iter()
-            .map(|id| Egt::new(&id))
+            .map(|id| TableIndexer::new(&id))
             .collect()
     }
 
-    fn table(name: &str) -> Egt {
-        Egt::new(&TableId::parse(name).unwrap())
+    fn table(name: &str) -> TableIndexer {
+        TableIndexer::new(&TableId::parse(name).unwrap())
     }
 
     #[test]
@@ -430,8 +430,8 @@ mod tests {
         for name in ["KPaPh_K", "K_KPaPh", "KPcPf_KPdPe", "KPd_KPe", "KPaPa_KPh"] {
             let id = TableId::parse(name).unwrap();
             let (twin_id, mirrored) = id.twin();
-            let egt = Egt::new(&id);
-            let twin = Egt::new(&twin_id);
+            let egt = TableIndexer::new(&id);
+            let twin = TableIndexer::new(&twin_id);
             let reverse_mirrored = twin_id.twin().1;
             let stride = (egt.index_range() / 128).max(1);
             let mut samples: Vec<_> = (0..egt.index_range()).step_by(stride).collect();

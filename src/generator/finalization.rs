@@ -9,7 +9,7 @@ use rayon::prelude::*;
 
 use self::stats::StatsAccumulator;
 use super::WinLoss;
-use crate::egt::Egt;
+use crate::TableIndexer;
 use crate::egt_file::writer::{COMPRESSION_LEVEL, CompressedSegment, EgtFileWriter, encode_frame};
 use crate::error::{EgtError, EgtResult};
 use crate::outcome::PackedOutcome;
@@ -21,7 +21,7 @@ use crate::table_id::TableId;
 fn finalize_batch(
     values: &mut [AtomicU16],
     start: usize,
-    egt: &Egt,
+    egt: &TableIndexer,
     frame_size: usize,
     maxima: WinLoss<u16>,
 ) -> EgtResult<(CompressedSegment, StatsAccumulator)> {
@@ -72,7 +72,7 @@ fn finalize_batch(
 pub(super) fn finalize_table(
     location: &Location,
     id: &TableId,
-    egt: &Egt,
+    egt: &TableIndexer,
     mut values: Vec<AtomicU16>,
     maxima: WinLoss<u16>,
     invalid: InvalidCounts,
@@ -111,7 +111,7 @@ mod tests {
         let dir = crate::TestDir::new("finalization_wrong_length");
         let location = Location::parse(&dir.0).unwrap();
         let id = TableId::parse("K_K").unwrap();
-        let egt = Egt::new(&id);
+        let egt = TableIndexer::new(&id);
         assert!(matches!(
             finalize_table(
                 &location,

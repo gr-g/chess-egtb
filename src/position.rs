@@ -151,7 +151,7 @@ mod tests {
             .resolve()
             .unwrap()
         {
-            let egt = crate::egt::Egt::new(&id);
+            let egt = crate::TableIndexer::new(&id);
             let mut part = InvalidCounts::default();
             for index in 0..egt.index_range() {
                 match egt.position_from_index(index, Color::White) {

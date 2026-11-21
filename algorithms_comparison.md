@@ -159,7 +159,7 @@ the parent can incorporate their results.
 **Final codecs and value transforms:**
 
 - **chess-egt:** each exact canonical table is a seekable Zstd object, with
-  independent frames using the dimension-aligned `Egt` frame size. Each frame
+  independent frames using the dimension-aligned `TableIndexer` frame size. Each frame
   stores a little-endian `u16` palette count and raw `u16` outcome entries ordered
   by descending frequency, breaking ties by ascending numeric raw value. Constant
   frames need no indices; palettes of 2–256 entries use `u8` indices; larger

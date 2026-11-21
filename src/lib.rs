@@ -1,5 +1,5 @@
 //! Chess endgame generation, probing, verification, and statistics through a
-//! synchronous API. Use [`Egt`] for low-level position indexing.
+//! synchronous API. Use [`TableIndexer`] for low-level position indexing.
 //!
 //! [`Tablebase`] handles generation, position lookups, consistency checks,
 //! and statistics. [`Tablebase::new`] and [`Tablebase::set_input_path`] resolve
@@ -38,7 +38,6 @@
 //! construction, configuration, generation, probing, verification, and statistics
 //! operations rather than calling them directly from an async task.
 
-mod egt;
 mod egt_file;
 mod error;
 mod generator;
@@ -50,10 +49,10 @@ mod selection;
 mod stats;
 mod storage;
 mod table_id;
+mod table_indexer;
 mod tablebase;
 mod verification;
 
-pub use egt::Egt;
 pub use error::{EgtError, EgtResult};
 pub use outcome::{ConversionType, DtcOutcome};
 pub use selection::resolve_selectors;
@@ -61,6 +60,7 @@ pub use stats::{AggregateStats, EgtStats, LongestDtcPosition, Totals};
 #[cfg(test)]
 use std::path::PathBuf;
 pub use table_id::TableId;
+pub use table_indexer::TableIndexer;
 pub use tablebase::{ProbeWithMoves, Tablebase, parse_position};
 
 /// A fresh, test-specific directory under the system temp dir. Tests running in

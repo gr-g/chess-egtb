@@ -7,7 +7,7 @@ pub(crate) use batch::BatchReader;
 pub(crate) use cache::SharedFileCache;
 use frame::Frame;
 
-use crate::egt::Egt;
+use crate::TableIndexer;
 use crate::error::{EgtError, EgtResult, try_allocate};
 use crate::storage::{Location, block_on};
 use crate::table_id::TableId;
@@ -53,7 +53,7 @@ impl Source {
 /// File metadata and frame I/O for one existing canonical table.
 #[derive(Debug)]
 pub(crate) struct TableFile {
-    egt: Egt,
+    egt: TableIndexer,
     location: Location,
     key: ObjectPath,
     seek_table: zeekstd::SeekTable,
@@ -61,7 +61,7 @@ pub(crate) struct TableFile {
 
 impl TableFile {
     /// The immutable descriptor of this canonical table.
-    pub(crate) fn egt(&self) -> &Egt {
+    pub(crate) fn egt(&self) -> &TableIndexer {
         &self.egt
     }
 
@@ -69,7 +69,7 @@ impl TableFile {
     /// Objects must not be replaced while this reader is in use: reads are not
     /// pinned to an object version.
     pub(crate) fn open(location: &Location, id: &TableId) -> EgtResult<Self> {
-        let egt = Egt::new(id);
+        let egt = TableIndexer::new(id);
         let index_range = egt.index_range();
         let key = location.key(&id.relative_path("ggegt"));
         location.validate_format()?;
@@ -287,9 +287,9 @@ mod tests {
     fn pawn_orders_route_to_distinct_tables_and_their_twins() {
         for name in ["KPa_KPa", "KPao_KPao", "KPaPa_KPb", "KPa_KPbPb"] {
             let id = TableId::parse(name).unwrap();
-            let egt = Egt::new(&id);
+            let egt = TableIndexer::new(&id);
             let (twin, _) = id.twin();
-            let twin_egt = Egt::new(&twin);
+            let twin_egt = TableIndexer::new(&twin);
             let stride = (egt.index_range() / 64).max(1);
             for turn in [Color::White, Color::Black] {
                 for index in (0..egt.index_range()).step_by(stride) {
@@ -368,7 +368,7 @@ mod tests {
             .unwrap()
             .into_position(CastlingMode::Standard)
             .unwrap();
-        let egt = Egt::new(&crate::TableId::parse("KPa_K").unwrap());
+        let egt = TableIndexer::new(&crate::TableId::parse("KPa_K").unwrap());
         let index = egt.position_to_index(&position);
         let outcome = PackedOutcome::new_win(ConversionType::Checkmate, 987);
         let reader = write_fixture(&dir.0, "KPa_K", |i| {
@@ -398,7 +398,7 @@ mod tests {
     #[test]
     fn full_frames_short_tail_and_table_boundaries() {
         let dir = crate::TestDir::new("frame_boundaries");
-        let egt = Egt::new(&crate::TableId::parse("KQ_KR").unwrap());
+        let egt = TableIndexer::new(&crate::TableId::parse("KQ_KR").unwrap());
         let length = egt.index_range();
         let frame_size = egt.frame_size();
         let indexes = [0, frame_size - 1, frame_size, frame_size + 1, length - 1];

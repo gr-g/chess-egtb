@@ -11,7 +11,7 @@ use serde_json::Value;
 
 use crate::storage::{Location, block_on};
 use crate::table_id::TableId;
-use crate::{Egt, EgtError, EgtResult};
+use crate::{EgtError, EgtResult, TableIndexer};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LongestDtcPosition {
@@ -160,7 +160,7 @@ impl StatsRecord {
     pub(crate) fn missing(id: &TableId) -> Self {
         Self::Missing {
             tablename: id.to_string(),
-            index_range: Egt::new(id).index_range(),
+            index_range: TableIndexer::new(id).index_range(),
         }
     }
 
@@ -364,7 +364,7 @@ pub(crate) fn read_stats(location: &Location, id: &TableId) -> EgtResult<EgtStat
 
 impl EgtStats {
     fn validate(&self, id: &TableId) -> EgtResult<()> {
-        let frame_size = Egt::new(id).frame_size();
+        let frame_size = TableIndexer::new(id).frame_size();
         if self.tablename != id.name().as_str()
             || self.sha256.len() != 64
             || !self.sha256.bytes().all(|byte| byte.is_ascii_hexdigit())
@@ -444,7 +444,7 @@ mod tests {
             tablename: "KQ_K".into(),
             sha256: "ab".repeat(32),
             index_range: 16,
-            frame_size: Egt::new(&TableId::parse("KQ_K").unwrap()).frame_size(),
+            frame_size: TableIndexer::new(&TableId::parse("KQ_K").unwrap()).frame_size(),
             totals: Totals {
                 bytes: 100,
                 num_frames: 1,

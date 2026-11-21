@@ -306,7 +306,7 @@ fn object_exists(location: &Location, path: &str) -> bool {
 }
 
 fn position_for(name: &str) -> Chess {
-    let egt = Egt::new(&crate::TableId::parse(name).unwrap());
+    let egt = TableIndexer::new(&crate::TableId::parse(name).unwrap());
     (0..egt.index_range())
         .find_map(|index| egt.position_from_index(index, Color::White).ok())
         .unwrap()
