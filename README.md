@@ -1,6 +1,6 @@
 # gg-EGTB: A Chess Endgame Tablebase
 gg-EGTB is an experimental [chess endgame tablebase](https://en.wikipedia.org/wiki/Endgame_tablebase)
-(EGT) written in Rust.
+(EGTB) written in Rust.
 
 ## Current status
 
@@ -417,7 +417,7 @@ contiguous range `[0, index_range)` for each endgame table. The indexer
 uses board symmetries so that equivalent positions share the same index,
 except for the pawnless diagonal-symmetry case described below.
 
-The indexing strategy used by this EGT distinguishes three symmetry cases.
+The indexing strategy used by this EGTB distinguishes three symmetry cases.
 
 **Pawnless tables**. Positions without pawns are transformed using the
 existing board symmetries (horizontal, vertical, diagonal) into _canonical_
@@ -451,7 +451,7 @@ during generation, but only one contributes to the unique-position statistics;
 the other is counted as `redundant`.
 
 In the case of tables with pawns, the indexing approach deviates a bit from
-common strategies used by other EGTs, due to the choice of "pawn-first"
+common strategies used by other EGTBs, due to the choice of "pawn-first"
 partitioning described above, which influences the indexing strategy. For
 instance, kings are not encoded together as an index in `[0, 1806)`; instead,
 they are encoded after the pawns without overlapping with them. This is

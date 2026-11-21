@@ -1,6 +1,6 @@
 # AGENTS.md
 
-- The goal of the project is to produce a chess endgame tablebase (EGT).
+- The goal of the project is to produce a chess endgame tablebase (EGTB).
 - The project is fully functional. Tables for all 3-piece, 4-piece and 5-piece
   endgames were generated and verified successfully, they are available in
   `~/ggegtb/`.
