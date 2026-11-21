@@ -1,11 +1,11 @@
-//! Error types for the chess-egt library.
+//! Error types for the chess-egtb library.
 
-/// A specialized result type for chess-egt operations.
-pub type EgtResult<T> = Result<T, EgtError>;
+/// A specialized result type for chess-egtb operations.
+pub type EgtbResult<T> = Result<T, EgtbError>;
 
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum EgtError {
+pub enum EgtbError {
     /// The endgame name (e.g. "KQ_KPc") is malformed.
     #[error("invalid endgame name {name:?}: {reason}")]
     InvalidEndgameName { name: String, reason: &'static str },
@@ -77,7 +77,7 @@ pub enum EgtError {
     DependencyUnavailable {
         dependency: String,
         #[source]
-        source: Box<EgtError>,
+        source: Box<EgtbError>,
     },
 
     /// Wraps a std::io::Error.
@@ -100,11 +100,11 @@ pub enum EgtError {
 }
 
 /// Reserves exactly `len` elements, reporting failure as `WorkingMemoryAllocation`.
-pub(crate) fn try_allocate<T>(len: usize, context: &str) -> EgtResult<Vec<T>> {
+pub(crate) fn try_allocate<T>(len: usize, context: &str) -> EgtbResult<Vec<T>> {
     let mut values = Vec::new();
     values
         .try_reserve_exact(len)
-        .map_err(|error| EgtError::WorkingMemoryAllocation {
+        .map_err(|error| EgtbError::WorkingMemoryAllocation {
             context: context.to_owned(),
             bytes: len as u128 * std::mem::size_of::<T>() as u128,
             reason: error.to_string(),
@@ -112,7 +112,7 @@ pub(crate) fn try_allocate<T>(len: usize, context: &str) -> EgtResult<Vec<T>> {
     Ok(values)
 }
 
-impl EgtError {
+impl EgtbError {
     pub(crate) fn invalid_data(
         location: impl Into<String>,
         source: impl Into<Box<dyn std::error::Error + Send + Sync>>,

@@ -1,11 +1,11 @@
 # Tablebase scaling and cloud costs
 
-Resource estimates for generating, verifying, and storing the gg-EGT tablebase.
+Resource estimates for generating, verifying, and storing the gg-EGTB tablebase.
 Results up to 5 pieces are available. Results for larger sets are estimated.
 
 ## 1. Problem size
 
-As described in [Table scopes and naming](https://github.com/gr-g/chess-egt#table-scopes-and-naming),
+As described in [Table scopes and naming](README.md#table-scopes-and-naming),
 endgame tables are generated and stored as individual files, each representing
 positions for a specific set of material, side to move, and pawn arrangement
 on the files.

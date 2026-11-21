@@ -1,8 +1,8 @@
 [package]
-name = "chess-egt"
+name = "chess-egtb"
 version = "0.1.0"
 edition = "2024"
-default-run = "chess-egt"
+default-run = "chess-egtb"
 
 [dependencies]
 rayon = "1.12"
@@ -29,11 +29,11 @@ tower = { version = "0.5", features = ["util"] }
 shakmaty = { git = "https://github.com/gr-g/shakmaty", rev = "aac0926906820065421964bb98b12c3bbe51829e" }
 
 [[bin]]
-name = "chess-egt"
+name = "chess-egtb"
 path = "src/bin/main.rs"
 
 [[bin]]
-name = "chess-egt-server"
+name = "chess-egtb-server"
 path = "src/bin/server.rs"
 
 [profile.release]

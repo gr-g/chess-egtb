@@ -5,10 +5,10 @@ mod unmoves;
 use std::time::Instant;
 
 use self::solver::{TableState, solve_pair};
-use crate::egt_file::{BatchReader, Source};
 use crate::report::{generation_summary, print_table_stats};
 use crate::selection::{TablePair, plan_pairs};
-use crate::{AggregateStats, EgtResult, EgtStats, TableIndexer, resolve_selectors};
+use crate::table_file::{BatchReader, Source};
+use crate::{AggregateStats, EgtbResult, TableIndexer, TableStats, resolve_selectors};
 
 #[derive(Default, Clone, Copy)]
 struct WinLoss<T> {
@@ -21,7 +21,7 @@ pub(crate) fn generate(
     source: &Source,
     pool: &rayon::ThreadPool,
     selectors: &[&str],
-) -> EgtResult<Vec<EgtStats>> {
+) -> EgtbResult<Vec<TableStats>> {
     let start = Instant::now();
     let pairs = plan_pairs(resolve_selectors(selectors)?);
     source.base().ensure_format()?;
@@ -31,7 +31,7 @@ pub(crate) fn generate(
         pairs.len(),
         pool.current_num_threads()
     );
-    pool.install(|| -> EgtResult<()> {
+    pool.install(|| -> EgtbResult<()> {
         for pair in pairs {
             results.extend(generate_pair(source, &pair)?);
         }
@@ -65,7 +65,7 @@ pub(crate) fn generate(
 
 /// Generates and publishes one table and its twin in the caller's Rayon pool.
 /// A self-twin is published once. Statistics are returned in table/twin order.
-fn generate_pair(source: &Source, pair: &TablePair) -> EgtResult<Vec<EgtStats>> {
+fn generate_pair(source: &Source, pair: &TablePair) -> EgtbResult<Vec<TableStats>> {
     let dependency_start = Instant::now();
     let ids = || std::iter::once(&pair.table).chain(pair.twin.iter());
     let mut dependencies: Vec<_> = ids().flat_map(|id| id.dependencies()).collect();
@@ -84,7 +84,7 @@ fn generate_pair(source: &Source, pair: &TablePair) -> EgtResult<Vec<EgtStats>> 
     let setup_start = Instant::now();
     let mut tables = ids()
         .map(|id| TableState::new(TableIndexer::new(id)))
-        .collect::<EgtResult<Vec<_>>>()?;
+        .collect::<EgtbResult<Vec<_>>>()?;
     let setup_time = setup_start.elapsed();
     let timings = solve_pair(&mut tables, pair.reflected, &reader)?;
     let init_time = setup_time + timings.init;
@@ -121,7 +121,7 @@ mod tests {
     use crate::selection::TableSelector;
     use crate::storage::Location;
     use crate::table_id::TableId;
-    use crate::{EgtError, Tablebase};
+    use crate::{EgtbError, Tablebase};
 
     #[test]
     fn parallel_missing_dependency_returns_error_without_generating() {
@@ -130,12 +130,12 @@ mod tests {
         generator.set_threads(4);
         let result = generator.generate(&["KQ_K"]);
         assert!(
-            matches!(result, Err(EgtError::DependencyUnavailable { dependency, source })
-            if dependency == "K_K" && matches!(*source, EgtError::FileNotFound(_)))
+            matches!(result, Err(EgtbError::DependencyUnavailable { dependency, source })
+            if dependency == "K_K" && matches!(*source, EgtbError::FileNotFound(_)))
         );
         for name in ["K_K", "KQ_K", "K_KQ"] {
             let id = TableId::parse(name).unwrap();
-            assert!(!dir.0.join(id.relative_path("ggegt")).exists());
+            assert!(!dir.0.join(id.relative_path("ggegtb")).exists());
         }
     }
 

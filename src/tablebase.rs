@@ -2,18 +2,18 @@ use std::{path::Path, time::Duration};
 
 use shakmaty::{CastlingMode, Chess, Move, Position, PositionError, fen::Fen};
 
-use crate::egt_file::{SharedFileCache, Source};
 use crate::storage::Location;
-use crate::{AggregateStats, DtcOutcome, EgtError, EgtResult, EgtStats};
+use crate::table_file::{SharedFileCache, Source};
+use crate::{AggregateStats, DtcOutcome, EgtbError, EgtbResult, TableStats};
 use crate::{generator, stats, verification};
 
 /// Parses a standard-chess FEN for probing, accepting impossible checks as indexing does.
-pub fn parse_position(fen: &str) -> EgtResult<Chess> {
+pub fn parse_position(fen: &str) -> EgtbResult<Chess> {
     fen.parse::<Fen>()
-        .map_err(EgtError::InvalidFen)?
+        .map_err(EgtbError::InvalidFen)?
         .into_position(CastlingMode::Standard)
         .or_else(PositionError::ignore_impossible_check)
-        .map_err(|e| EgtError::InvalidPosition(format!("invalid position: {e:?}")))
+        .map_err(|e| EgtbError::InvalidPosition(format!("invalid position: {e:?}")))
 }
 
 #[cfg(test)]
@@ -40,7 +40,7 @@ impl Tablebase {
     /// Resolves a local tablebase directory or object-store URL once.
     ///
     /// Returns an error for invalid locations or backend initialization failures.
-    pub fn new(path: impl AsRef<Path>) -> EgtResult<Self> {
+    pub fn new(path: impl AsRef<Path>) -> EgtbResult<Self> {
         Ok(Self::from_location(Location::parse(path)?))
     }
 
@@ -82,13 +82,13 @@ impl Tablebase {
     ///
     /// Clears cached probe data on success. An invalid location leaves the previous
     /// setting unchanged.
-    pub fn set_input_path(&mut self, path: impl AsRef<Path>) -> EgtResult<()> {
+    pub fn set_input_path(&mut self, path: impl AsRef<Path>) -> EgtbResult<()> {
         self.cache.set_input_path(Some(Location::parse(path)?));
         Ok(())
     }
 
     /// Probes a position using the internally synchronized shared cache.
-    pub fn probe(&self, position: &Chess) -> EgtResult<DtcOutcome> {
+    pub fn probe(&self, position: &Chess) -> EgtbResult<DtcOutcome> {
         self.cache.probe(position)
     }
 
@@ -98,7 +98,7 @@ impl Tablebase {
     /// the successor's side to move, without inversion or distance adjustment.
     /// Terminal positions have an empty move list. Lookup errors are returned
     /// directly, as with `probe`.
-    pub fn probe_with_moves(&self, position: &Chess) -> EgtResult<ProbeWithMoves> {
+    pub fn probe_with_moves(&self, position: &Chess) -> EgtbResult<ProbeWithMoves> {
         let moves = position.legal_moves();
         let mut positions = Vec::with_capacity(1 + moves.len());
         positions.push(position.clone());
@@ -121,7 +121,7 @@ impl Tablebase {
     /// Capture/promotion dependencies must already exist or be explicitly selected.
     /// Working arrays and each pair's eagerly loaded dependencies must fit in memory.
     /// Clears the probe cache before any tables can be replaced.
-    pub fn generate(&mut self, selectors: &[&str]) -> EgtResult<Vec<EgtStats>> {
+    pub fn generate(&mut self, selectors: &[&str]) -> EgtbResult<Vec<TableStats>> {
         let pool = thread_pool(self.threads)?;
         self.cache.clear();
         generator::generate(self.source(), &pool, selectors)
@@ -130,7 +130,7 @@ impl Tablebase {
     /// Verifies the sorted, deduplicated selection against legal successors.
     /// Each selected table, its quiet twin, and its direct conversion dependencies
     /// must fit in memory together. Twins are loaded but not implicitly verified.
-    pub fn verify(&self, selectors: &[&str]) -> EgtResult<()> {
+    pub fn verify(&self, selectors: &[&str]) -> EgtbResult<()> {
         verification::verify(self.source(), &thread_pool(self.threads)?, selectors)
     }
 
@@ -138,22 +138,22 @@ impl Tablebase {
     /// theoretical index ranges; computed totals are null for incomplete selections.
     /// Hierarchy selections use cached summaries when available. Only the base
     /// location is consulted, even when an input overlay is configured.
-    pub fn stats(&self, selectors: &[&str]) -> EgtResult<AggregateStats> {
+    pub fn stats(&self, selectors: &[&str]) -> EgtbResult<AggregateStats> {
         stats::query(self.source().base(), selectors)
     }
 
     /// Creates missing placeholders and rebuilds hierarchy summaries in the base location.
     /// Does not scan table contents or replace complete per-table metadata.
     /// Do not run concurrently with generation or another cache rebuild.
-    pub fn cache_stats(&self, selectors: &[&str]) -> EgtResult<AggregateStats> {
+    pub fn cache_stats(&self, selectors: &[&str]) -> EgtbResult<AggregateStats> {
         stats::cache(self.source().base(), selectors)
     }
 }
 
 /// A Rayon pool with `threads` workers, or Rayon's default for zero.
-pub(crate) fn thread_pool(threads: usize) -> EgtResult<rayon::ThreadPool> {
+pub(crate) fn thread_pool(threads: usize) -> EgtbResult<rayon::ThreadPool> {
     rayon::ThreadPoolBuilder::new()
         .num_threads(threads)
         .build()
-        .map_err(|_| EgtError::Internal("failed to build thread pool"))
+        .map_err(|_| EgtbError::Internal("failed to build thread pool"))
 }

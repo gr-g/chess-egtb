@@ -2,7 +2,7 @@ use std::{cmp::Reverse, ops::Range};
 
 use crate::error::try_allocate;
 use crate::outcome::PackedOutcome;
-use crate::{EgtError, EgtResult};
+use crate::{EgtbError, EgtbResult};
 
 #[derive(Clone, Debug)]
 pub(crate) struct Frame {
@@ -11,8 +11,8 @@ pub(crate) struct Frame {
     d: usize,
 }
 
-fn invalid(message: &'static str) -> EgtError {
-    EgtError::invalid_data("tablebase frame", message)
+fn invalid(message: &'static str) -> EgtbError {
+    EgtbError::invalid_data("tablebase frame", message)
 }
 
 fn serialized_length(d: usize, len: usize) -> u128 {
@@ -28,7 +28,7 @@ fn serialized_length(d: usize, len: usize) -> u128 {
 }
 
 impl Frame {
-    pub(super) fn decode(data: Vec<u8>, len: usize) -> EgtResult<Self> {
+    pub(super) fn decode(data: Vec<u8>, len: usize) -> EgtbResult<Self> {
         if data.len() < 2 {
             return Err(invalid("truncated frame palette count"));
         }
@@ -76,7 +76,7 @@ impl Frame {
         self.data.capacity()
     }
 
-    pub(super) fn expand(&self, range: Range<usize>) -> EgtResult<Vec<PackedOutcome>> {
+    pub(super) fn expand(&self, range: Range<usize>) -> EgtbResult<Vec<PackedOutcome>> {
         if range.start > range.end || range.end > self.len {
             return Err(invalid("frame expansion range out of bounds"));
         }
@@ -86,9 +86,9 @@ impl Frame {
     }
 }
 
-pub(super) fn encode(values: &[PackedOutcome]) -> EgtResult<Vec<u8>> {
+pub(super) fn encode(values: &[PackedOutcome]) -> EgtbResult<Vec<u8>> {
     if values.is_empty() {
-        return Err(EgtError::Internal("cannot encode an empty frame"));
+        return Err(EgtbError::Internal("cannot encode an empty frame"));
     }
     let mut counts = vec![0usize; 65536];
     for value in values {
@@ -99,11 +99,11 @@ pub(super) fn encode(values: &[PackedOutcome]) -> EgtResult<Vec<u8>> {
         .collect();
     let d = palette.len();
     if d > u16::MAX as usize {
-        return Err(EgtError::Internal("frame palette exceeds 65535 entries"));
+        return Err(EgtbError::Internal("frame palette exceeds 65535 entries"));
     }
     palette.sort_unstable_by_key(|&raw| (Reverse(counts[raw as usize]), raw));
     let size = usize::try_from(serialized_length(d, values.len()))
-        .map_err(|_| EgtError::Internal("encoded frame length overflows usize"))?;
+        .map_err(|_| EgtbError::Internal("encoded frame length overflows usize"))?;
     let mut data = try_allocate(size, "frame payload")?;
     data.extend_from_slice(&(d as u16).to_le_bytes());
     let mut ranks = vec![0u16; 65536];

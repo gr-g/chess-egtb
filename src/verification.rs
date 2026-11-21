@@ -3,17 +3,17 @@ use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
 use rayon::prelude::*;
 use shakmaty::{Chess, Color, Move, Position};
 
-use crate::egt_file::{BatchReader, Source};
 use crate::report::format_timing;
+use crate::table_file::{BatchReader, Source};
 use crate::table_id::TableId;
-use crate::{ConversionType, DtcOutcome, EgtError, EgtResult, TableIndexer, resolve_selectors};
+use crate::{ConversionType, DtcOutcome, EgtbError, EgtbResult, TableIndexer, resolve_selectors};
 
 /// Verifies the selected tables against their legal successors.
 pub(crate) fn verify(
     source: &Source,
     pool: &rayon::ThreadPool,
     selectors: &[&str],
-) -> EgtResult<()> {
+) -> EgtbResult<()> {
     let start = std::time::Instant::now();
     let ids = resolve_selectors(selectors)?;
     let (unique_positions, index_range) = pool.install(|| verify_tables(source, &ids))?;
@@ -27,7 +27,7 @@ pub(crate) fn verify(
 }
 
 /// Returns the unique positions and the index range of the verified tables.
-fn verify_tables(source: &Source, ids: &[TableId]) -> EgtResult<(usize, usize)> {
+fn verify_tables(source: &Source, ids: &[TableId]) -> EgtbResult<(usize, usize)> {
     let mut unique_positions = 0;
     let mut index_range = 0;
     for id in ids {
@@ -57,7 +57,7 @@ fn verify_tables(source: &Source, ids: &[TableId]) -> EgtResult<(usize, usize)> 
 }
 
 /// Verifies independent blocks and returns the number of valid, unique positions.
-fn verify_egt(reader: &BatchReader, egt: &TableIndexer) -> EgtResult<usize> {
+fn verify_egt(reader: &BatchReader, egt: &TableIndexer) -> EgtbResult<usize> {
     let tablename = egt.id();
     let local_range = egt.index_range();
 
@@ -98,10 +98,10 @@ fn verify_block(
     egt: &TableIndexer,
     start: usize,
     end: usize,
-) -> EgtResult<usize> {
+) -> EgtbResult<usize> {
     let tablename = egt.id();
     let outcomes = reader.read_chunk(&tablename, start, end)?;
-    let fail = |local_idx: usize, reason: &str| EgtError::ConsistencyCheckFailed {
+    let fail = |local_idx: usize, reason: &str| EgtbError::ConsistencyCheckFailed {
         endgame: tablename.to_string(),
         index: local_idx,
         reason: reason.to_owned(),
@@ -133,7 +133,7 @@ fn verify_block(
             unique_positions += 1;
         }
         let outcome =
-            DtcOutcome::try_from(outcome_maybe).map_err(|value| EgtError::CorruptedOutcome {
+            DtcOutcome::try_from(outcome_maybe).map_err(|value| EgtbError::CorruptedOutcome {
                 value,
                 index: local_idx,
             })?;
@@ -161,7 +161,7 @@ fn verify_block(
                     successor.play_unchecked(m);
                     Ok((m, reader.probe_outcome(&successor)?))
                 })
-                .collect::<EgtResult<_>>()?;
+                .collect::<EgtbResult<_>>()?;
             let best = moves
                 .iter()
                 .map(|(m, successor)| successor.before_move(m))
@@ -240,7 +240,7 @@ mod tests {
                 PackedOutcome::from_u16(8),
                 PackedOutcome::DRAW,
             ] {
-                crate::egt_file::writer::write_fixture(&dir.0, "K_K", |i| {
+                crate::table_file::writer::write_fixture(&dir.0, "K_K", |i| {
                     if i == index {
                         outcome
                     } else {
@@ -251,10 +251,10 @@ mod tests {
                 let result = verifier.verify(&["K_K"]);
                 if outcome.is_invalid() {
                     assert!(matches!(result,
-                        Err(EgtError::ConsistencyCheckFailed { index: failed, .. }) if failed == index));
+                        Err(EgtbError::ConsistencyCheckFailed { index: failed, .. }) if failed == index));
                 } else if outcome.is_unknown() {
                     assert!(matches!(result,
-                        Err(EgtError::CorruptedOutcome { index: failed, value: 8 }) if failed == index));
+                        Err(EgtbError::CorruptedOutcome { index: failed, value: 8 }) if failed == index));
                 } else {
                     result.unwrap();
                 }

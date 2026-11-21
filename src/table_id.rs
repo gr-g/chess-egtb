@@ -7,7 +7,7 @@ use arrayvec::ArrayString;
 use shakmaty::{ByRole, Chess, Color, File, Position, Role};
 use std::cmp::Ordering;
 
-use crate::error::{EgtError, EgtResult};
+use crate::error::{EgtbError, EgtbResult};
 use crate::selection::Hierarchy;
 
 mod dependencies;
@@ -28,8 +28,8 @@ impl std::fmt::Display for TableId {
 }
 
 impl std::str::FromStr for TableId {
-    type Err = EgtError;
-    fn from_str(name: &str) -> EgtResult<Self> {
+    type Err = EgtbError;
+    fn from_str(name: &str) -> EgtbResult<Self> {
         Self::parse(name)
     }
 }
@@ -90,10 +90,10 @@ impl TableId {
     }
 
     /// Rejects malformed names and noncanonical horizontal orientations.
-    pub fn parse(name: &str) -> EgtResult<Self> {
+    pub fn parse(name: &str) -> EgtbResult<Self> {
         let id = parse_oriented(name)?;
         if id.pawns.canonicalized().1 {
-            return Err(EgtError::InvalidEndgameName {
+            return Err(EgtbError::InvalidEndgameName {
                 name: name.to_owned(),
                 reason: "noncanonical horizontal pawn-file orientation",
             });
@@ -103,14 +103,14 @@ impl TableId {
 
     /// Routes a position, returning whether its table identity requires file reflection.
     /// This flag does not include king normalization within a symmetric table.
-    pub fn from_position(position: &Chess) -> EgtResult<(Self, bool)> {
+    pub fn from_position(position: &Chess) -> EgtbResult<(Self, bool)> {
         if !position.castles().is_empty() {
-            return Err(EgtError::UnsupportedPosition(
+            return Err(EgtbError::UnsupportedPosition(
                 "positions with castling rights are not supported",
             ));
         }
         if position.board().occupied().count() > MAX_PIECES {
-            return Err(EgtError::UnsupportedPosition(
+            return Err(EgtbError::UnsupportedPosition(
                 "at most eight physical pieces are supported",
             ));
         }
@@ -137,7 +137,7 @@ impl TableId {
         self.pawns.is_symmetric()
     }
 
-    pub(crate) fn piece_count(&self, side: EgtSide, role: Role) -> usize {
+    pub(crate) fn piece_count(&self, side: Side, role: Role) -> usize {
         self.pieces[side_index(side)][role_index(role)].into()
     }
 
@@ -219,18 +219,18 @@ impl TableId {
     }
 }
 
-fn side_index(side: EgtSide) -> usize {
-    usize::from(side == EgtSide::SideNotToMove)
+fn side_index(side: Side) -> usize {
+    usize::from(side == Side::SideNotToMove)
 }
 
 pub(crate) fn uppercase_role(c: char) -> Option<Role> {
     Role::from_char(c).filter(|_| c.is_ascii_uppercase())
 }
 
-fn format_name(key: PawnKey, count: impl Fn(EgtSide, Role) -> usize) -> TableName {
+fn format_name(key: PawnKey, count: impl Fn(Side, Role) -> usize) -> TableName {
     let mut name = TableName::new();
-    for side in [EgtSide::SideToMove, EgtSide::SideNotToMove] {
-        let stm = side == EgtSide::SideToMove;
+    for side in [Side::SideToMove, Side::SideNotToMove] {
+        let stm = side == Side::SideToMove;
         if !stm {
             name.push('_');
         }
@@ -257,8 +257,8 @@ fn format_name(key: PawnKey, count: impl Fn(EgtSide, Role) -> usize) -> TableNam
     name
 }
 
-pub(crate) fn parse_oriented(tablename: &str) -> EgtResult<TableId> {
-    let invalid = |reason| EgtError::InvalidEndgameName {
+pub(crate) fn parse_oriented(tablename: &str) -> EgtbResult<TableId> {
+    let invalid = |reason| EgtbError::InvalidEndgameName {
         name: tablename.to_owned(),
         reason,
     };
@@ -347,12 +347,12 @@ fn pawn_flags(word: u8, stm: bool) -> impl Iterator<Item = bool> {
         .map(move |i| opposed(word, i, stm))
 }
 
-pub(crate) fn sides(word: u8) -> impl Iterator<Item = EgtSide> {
+pub(crate) fn sides(word: u8) -> impl Iterator<Item = Side> {
     (0..word.ilog2()).map(move |i| {
         if word & (1 << i) == 0 {
-            EgtSide::SideToMove
+            Side::SideToMove
         } else {
-            EgtSide::SideNotToMove
+            Side::SideNotToMove
         }
     })
 }
@@ -426,7 +426,7 @@ impl PawnKey {
         let mut sntm = arrayvec::ArrayVec::<File, 6>::new();
         for (file, word) in self.files.into_iter().enumerate() {
             for side in sides(word) {
-                let files = if side == EgtSide::SideToMove {
+                let files = if side == Side::SideToMove {
                     &mut stm
                 } else {
                     &mut sntm
@@ -459,7 +459,7 @@ pub(crate) fn compare_file_reflection(stm: &[File], sntm: &[File]) -> Ordering {
 pub(crate) const MAX_PIECES: usize = 8;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) enum EgtSide {
+pub(crate) enum Side {
     SideToMove,
     SideNotToMove,
 }
@@ -468,12 +468,12 @@ pub(crate) enum EgtSide {
 pub(crate) mod test_support {
     use super::*;
 
-    pub(crate) fn pawn_group(file: File, order: &[EgtSide]) -> (File, u8) {
+    pub(crate) fn pawn_group(file: File, order: &[Side]) -> (File, u8) {
         let word = order
             .iter()
             .enumerate()
             .fold(1 << order.len(), |word, (i, &side)| {
-                word | (u8::from(side == EgtSide::SideNotToMove) << i)
+                word | (u8::from(side == Side::SideNotToMove) << i)
             });
         (file, word)
     }
@@ -495,7 +495,7 @@ mod tests {
     use super::*;
     use crate::TableIndexer;
     use crate::selection::TableSelector;
-    use EgtSide::{SideNotToMove as Sntm, SideToMove as Stm};
+    use Side::{SideNotToMove as Sntm, SideToMove as Stm};
     use shakmaty::{CastlingMode, fen::Fen};
     use test_support::{pawn_group, with_pawns};
 
@@ -654,7 +654,7 @@ mod tests {
             assert!(
                 matches!(
                     TableId::parse(name),
-                    Err(EgtError::InvalidEndgameName { .. })
+                    Err(EgtbError::InvalidEndgameName { .. })
                 ),
                 "accepted {name:?}"
             );
@@ -753,8 +753,8 @@ mod tests {
         assert!(reflected);
         assert_eq!(table.material(), "KP_KP");
         assert_eq!(
-            table.relative_path("ggegt"),
-            "4/2v2/op0/2pawns/KPd_KPe.ggegt"
+            table.relative_path("ggegtb"),
+            "4/2v2/op0/2pawns/KPd_KPe.ggegtb"
         );
         assert_eq!(
             table.relative_path(".json"),
@@ -763,8 +763,8 @@ mod tests {
         let table = TableId::parse("KPao_KPao").unwrap();
         assert_eq!(table.opposing_pairs(), 1);
         assert_eq!(
-            table.relative_path("ggegt"),
-            "4/2v2/op1/2pawns/KPao_KPao.ggegt"
+            table.relative_path("ggegtb"),
+            "4/2v2/op1/2pawns/KPao_KPao.ggegtb"
         );
         assert_eq!(
             TableId::parse("KQ_K").unwrap().relative_path("json"),

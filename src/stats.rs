@@ -11,7 +11,7 @@ use serde_json::Value;
 
 use crate::storage::{Location, block_on};
 use crate::table_id::TableId;
-use crate::{EgtError, EgtResult, TableIndexer};
+use crate::{EgtbError, EgtbResult, TableIndexer};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LongestDtcPosition {
@@ -44,7 +44,7 @@ pub struct Totals {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "Value")]
-pub struct EgtStats {
+pub struct TableStats {
     pub tablename: String,
     pub sha256: String,
     pub index_range: usize,
@@ -55,7 +55,7 @@ pub struct EgtStats {
 
 // Deserialize through JSON so integer histogram keys retain JSON's key
 // conversion, which `flatten` does not provide.
-impl TryFrom<Value> for EgtStats {
+impl TryFrom<Value> for TableStats {
     type Error = serde_json::Error;
 
     fn try_from(mut value: Value) -> Result<Self, Self::Error> {
@@ -91,7 +91,7 @@ impl TryFrom<Value> for EgtStats {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(try_from = "Value")]
 pub(crate) enum StatsRecord {
-    Complete(Box<EgtStats>),
+    Complete(Box<TableStats>),
     Missing {
         tablename: String,
         index_range: usize,
@@ -103,7 +103,7 @@ impl TryFrom<Value> for StatsRecord {
 
     fn try_from(value: Value) -> Result<Self, Self::Error> {
         if !value.get("bytes").is_some_and(Value::is_null) {
-            return EgtStats::try_from(value).map(|stats| Self::Complete(Box::new(stats)));
+            return TableStats::try_from(value).map(|stats| Self::Complete(Box::new(stats)));
         }
         #[derive(Deserialize)]
         struct Missing {
@@ -137,7 +137,7 @@ impl Serialize for StatsRecord {
             } => (tablename, *index_range),
         };
         // The same fields as a complete record, with all statistics null.
-        let stats = EgtStats {
+        let stats = TableStats {
             tablename: tablename.clone(),
             sha256: String::new(),
             index_range,
@@ -205,7 +205,7 @@ impl Default for AggregateStats {
 
 impl AggregateStats {
     /// Adds one selected, available table. As with `merge`, selections must be disjoint.
-    pub fn add(&mut self, stats: &EgtStats) {
+    pub fn add(&mut self, stats: &TableStats) {
         self.selected_tables += 1;
         self.available_tables += 1;
         self.index_range += stats.index_range;
@@ -236,7 +236,7 @@ impl AggregateStats {
         }
     }
 
-    pub(crate) fn validate(&self) -> EgtResult<()> {
+    pub(crate) fn validate(&self) -> EgtbResult<()> {
         let complete = self.available_tables == self.selected_tables;
         if self.available_tables > self.selected_tables
             || (self.selected_tables == 0) != (self.index_range == 0)
@@ -287,7 +287,7 @@ impl Totals {
         );
     }
 
-    fn validate(&self, index_range: usize) -> EgtResult<()> {
+    fn validate(&self, index_range: usize) -> EgtbResult<()> {
         validate_outcomes(
             index_range,
             self.unique_positions,
@@ -323,7 +323,7 @@ fn merge_distribution(
 }
 
 /// Publishes a sidecar after its binary table, invalidating hierarchy summaries first.
-pub(crate) fn write_stats(location: &Location, id: &TableId, stats: &EgtStats) -> EgtResult<()> {
+pub(crate) fn write_stats(location: &Location, id: &TableId, stats: &TableStats) -> EgtbResult<()> {
     location.ensure_format()?;
     let key = location.key(&id.relative_path("json"));
     let json = serde_json::to_vec_pretty(stats)?;
@@ -332,7 +332,7 @@ pub(crate) fn write_stats(location: &Location, id: &TableId, stats: &EgtStats) -
     Ok(())
 }
 
-pub(crate) fn read_record(location: &Location, id: &TableId) -> EgtResult<StatsRecord> {
+pub(crate) fn read_record(location: &Location, id: &TableId) -> EgtbResult<StatsRecord> {
     location.validate_format()?;
     let key = location.key(&id.relative_path("json"));
     let result = block_on(location.store.get(&key)).map_err(|error| location.error(&key, error))?;
@@ -355,15 +355,15 @@ pub(crate) fn read_record(location: &Location, id: &TableId) -> EgtResult<StatsR
 }
 
 #[cfg(test)]
-pub(crate) fn read_stats(location: &Location, id: &TableId) -> EgtResult<EgtStats> {
+pub(crate) fn read_stats(location: &Location, id: &TableId) -> EgtbResult<TableStats> {
     match read_record(location, id)? {
         StatsRecord::Complete(stats) => Ok(*stats),
         StatsRecord::Missing { .. } => Err(invalid_data("requested statistics are unavailable")),
     }
 }
 
-impl EgtStats {
-    fn validate(&self, id: &TableId) -> EgtResult<()> {
+impl TableStats {
+    fn validate(&self, id: &TableId) -> EgtbResult<()> {
         let frame_size = TableIndexer::new(id).frame_size();
         if self.tablename != id.name().as_str()
             || self.sha256.len() != 64
@@ -381,8 +381,8 @@ impl EgtStats {
     }
 }
 
-fn invalid_data(reason: &str) -> EgtError {
-    EgtError::invalid_data("statistics", reason)
+fn invalid_data(reason: &str) -> EgtbError {
+    EgtbError::invalid_data("statistics", reason)
 }
 
 fn validate_outcomes(
@@ -392,7 +392,7 @@ fn validate_outcomes(
     draw: usize,
     loss: usize,
     invalid_and_redundant: [usize; 4],
-) -> EgtResult<()> {
+) -> EgtbResult<()> {
     if win.checked_add(draw).and_then(|n| n.checked_add(loss)) != Some(unique_positions)
         || invalid_and_redundant
             .iter()
@@ -410,7 +410,7 @@ fn validate_distribution(
     histogram: &BTreeMap<u16, usize>,
     count: usize,
     examples: &[LongestDtcPosition],
-) -> EgtResult<()> {
+) -> EgtbResult<()> {
     let maximum = histogram.last_key_value().map(|(&ply, _)| ply);
     if histogram.values().any(|&count| count == 0)
         || histogram
@@ -439,8 +439,8 @@ mod tests {
         "redundant",
     ];
 
-    fn stats() -> EgtStats {
-        EgtStats {
+    fn stats() -> TableStats {
+        TableStats {
             tablename: "KQ_K".into(),
             sha256: "ab".repeat(32),
             index_range: 16,
@@ -608,7 +608,7 @@ mod tests {
         ] {
             let mut json = serde_json::to_value(stats()).unwrap();
             json[field] = 0.into();
-            let invalid: EgtStats = serde_json::from_value(json).unwrap();
+            let invalid: TableStats = serde_json::from_value(json).unwrap();
             assert!(invalid.validate(&id).is_err(), "{field}");
         }
         let mut invalid = stats();
@@ -682,7 +682,7 @@ mod tests {
             for count in [0, usize::MAX] {
                 let mut json = serde_json::to_value(stats()).unwrap();
                 json[field] = count.into();
-                let invalid: EgtStats = serde_json::from_value(json).unwrap();
+                let invalid: TableStats = serde_json::from_value(json).unwrap();
                 assert!(invalid.validate(&id).is_err(), "{field}: {count}");
 
                 let mut json =
@@ -711,7 +711,7 @@ mod tests {
         location.ensure_format().unwrap();
         assert!(matches!(
             read_record(&location, &id),
-            Err(EgtError::FileNotFound(_))
+            Err(EgtbError::FileNotFound(_))
         ));
         let record = StatsRecord::missing(&id);
         let mut json = serde_json::to_value(&record).unwrap();

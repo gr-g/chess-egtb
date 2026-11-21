@@ -6,7 +6,7 @@ use super::WinLoss;
 use crate::TableIndexer;
 use crate::outcome::PackedOutcome;
 use crate::position::InvalidCounts;
-use crate::stats::{EgtStats, LongestDtcPosition, Totals};
+use crate::stats::{LongestDtcPosition, TableStats, Totals};
 
 /// Statistics for a contiguous batch; candidate indices are local to its table.
 #[derive(Default)]
@@ -75,7 +75,7 @@ impl StatsAccumulator {
         invalid: InvalidCounts,
         bytes: u64,
         sha256: String,
-    ) -> EgtStats {
+    ) -> TableStats {
         let materialize = |candidates: Vec<usize>, ply| {
             candidates
                 .into_iter()
@@ -98,7 +98,7 @@ impl StatsAccumulator {
         totals.invalid_illegal_ep_capture = invalid.illegal_ep_capture;
         totals.longest_dtc_win = materialize(self.candidates.win, maxima.win);
         totals.longest_dtc_loss = materialize(self.candidates.loss, maxima.loss);
-        EgtStats {
+        TableStats {
             tablename: egt.id().to_string(),
             sha256,
             index_range: egt.index_range(),

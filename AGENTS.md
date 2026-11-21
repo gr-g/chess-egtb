@@ -3,7 +3,7 @@
 - The goal of the project is to produce a chess endgame tablebase (EGT).
 - The project is fully functional. Tables for all 3-piece, 4-piece and 5-piece
   endgames were generated and verified successfully, they are available in
-  `~/ggegt/`.
+  `~/ggegtb/`.
 - An API server is available (`bin/server.rs`) providing stats and position
   outcomes via HTTP, similarly to the Lichess tablebase API.
 - The exact library interface to expose is still to be finalized.

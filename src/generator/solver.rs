@@ -44,10 +44,10 @@ use super::WinLoss;
 use super::unmoves::{quiet_unmoves, symmetry_adjusted_move_counter};
 use crate::ConversionType;
 use crate::TableIndexer;
-use crate::egt_file::BatchReader;
-use crate::error::{EgtResult, try_allocate};
+use crate::error::{EgtbResult, try_allocate};
 use crate::outcome::PackedOutcome;
 use crate::position::InvalidCounts;
+use crate::table_file::BatchReader;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum WinUpdate {
@@ -240,7 +240,7 @@ fn initialize_table(
     values: &mut [AtomicU16],
     summary: &PlySummary,
     reader: &BatchReader,
-) -> EgtResult<InitCounts> {
+) -> EgtbResult<InitCounts> {
     let (size, pawnless) = (egt.index_range(), egt.is_pawnless());
     debug_assert_eq!(values.len(), size);
     debug_assert_eq!(summary.size, size);
@@ -356,7 +356,7 @@ pub(super) struct TableState {
 }
 
 impl TableState {
-    pub(super) fn new(egt: TableIndexer) -> EgtResult<Self> {
+    pub(super) fn new(egt: TableIndexer) -> EgtbResult<Self> {
         let values = Self::allocate_values(egt.id(), egt.index_range())?;
         Ok(Self {
             summary: PlySummary::new(egt.index_range(), egt.summary_block_size()),
@@ -369,7 +369,7 @@ impl TableState {
         })
     }
 
-    fn allocate_values(table: impl std::fmt::Display, len: usize) -> EgtResult<Vec<AtomicU16>> {
+    fn allocate_values(table: impl std::fmt::Display, len: usize) -> EgtbResult<Vec<AtomicU16>> {
         let mut values = try_allocate(len, &format!("table {table} working values"))?;
         values.resize_with(len, || AtomicU16::new(PackedOutcome::INVALID.to_u16()));
         Ok(values)
@@ -391,7 +391,7 @@ pub(super) fn solve_pair(
     tables: &mut [TableState],
     reflected: [bool; 2],
     reader: &BatchReader,
-) -> EgtResult<PairTimings> {
+) -> EgtbResult<PairTimings> {
     debug_assert!((1..=2).contains(&tables.len()));
     let init_start = Instant::now();
     for table in tables.iter_mut() {
@@ -548,7 +548,7 @@ mod tests {
     use crate::selection::plan_pairs;
     use crate::storage::Location;
     use crate::table_id::TableId;
-    use crate::{EgtError, Tablebase};
+    use crate::{EgtbError, Tablebase};
 
     fn table(name: &str) -> TableIndexer {
         TableIndexer::new(&TableId::parse(name).unwrap())
@@ -573,7 +573,7 @@ mod tests {
         let len = usize::MAX;
         let err = TableState::allocate_values("oversized", len).err().unwrap();
         match err {
-            EgtError::WorkingMemoryAllocation { context, bytes, .. } => {
+            EgtbError::WorkingMemoryAllocation { context, bytes, .. } => {
                 assert_eq!(context, "table oversized working values");
                 assert_eq!(
                     bytes,
@@ -671,7 +671,7 @@ mod tests {
         let dir = crate::TestDir::new("initial_summary");
         Tablebase::new(&dir.0).unwrap().generate(&["K_K"]).unwrap();
         let location = Location::parse(&dir.0).unwrap();
-        let source = crate::egt_file::Source::new(location);
+        let source = crate::table_file::Source::new(location);
         let reader = BatchReader::open(&source, &[TableId::parse("K_K").unwrap()]).unwrap();
         for name in ["K_KQ", "KQ_K"] {
             let egt = table(name);

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Export leaf summaries and rough capacity estimates from chess-egt cache-stats metadata.
+"""Export leaf summaries and rough capacity estimates from chess-egtb cache-stats metadata.
 
-Run chess-egt cache-stats for the desired scope before exporting. Do not run while
+Run chess-egtb cache-stats for the desired scope before exporting. Do not run while
 metadata is being generated or rebuilt. No tablebase contents are read.
 """
 
@@ -42,7 +42,7 @@ def leaf_row(root, leaf):
     path = leaf.relative_to(root).as_posix() + "/"
     summary_path = leaf / "stats.json"
     if not summary_path.is_file():
-        raise ValueError(f"{leaf}: missing stats.json; run chess-egt cache-stats for the desired scope")
+        raise ValueError(f"{leaf}: missing stats.json; run chess-egtb cache-stats for the desired scope")
     summary = read_json(summary_path)
     stats = summary.get("stats")
     if summary.get("hierarchy") != path or not isinstance(stats, dict):
@@ -56,18 +56,18 @@ def leaf_row(root, leaf):
     if (len(records), len(complete), sum(record["index_range"] for record in records)) != (
         selected, available, index_range,
     ):
-        raise ValueError(f"{summary_path}: sidecars disagree with summary; run chess-egt cache-stats")
+        raise ValueError(f"{summary_path}: sidecars disagree with summary; run chess-egtb cache-stats")
     all_available = selected == available
     totals = stats.get("totals")
     if all_available:
         if not isinstance(totals, dict):
-            raise ValueError(f"{summary_path}: missing totals object; run chess-egt cache-stats")
+            raise ValueError(f"{summary_path}: missing totals object; run chess-egtb cache-stats")
         for key in OUTCOME_FIELDS:
             actual = count(totals, key, summary_path)
             if actual != sum(record[key] for record in complete):
-                raise ValueError(f"{summary_path}: {key} disagrees with sidecars; run chess-egt cache-stats")
+                raise ValueError(f"{summary_path}: {key} disagrees with sidecars; run chess-egtb cache-stats")
     elif "totals" not in stats or totals is not None:
-        raise ValueError(f"{summary_path}: incomplete summary must have null totals; run chess-egt cache-stats")
+        raise ValueError(f"{summary_path}: incomplete summary must have null totals; run chess-egtb cache-stats")
 
     row = {
         "path": path,
@@ -100,13 +100,13 @@ def leaf_row(root, leaf):
 def collect_rows(root):
     leaves = leaf_directories(root)
     if not leaves:
-        raise ValueError(f"{root}: no cached leaves; run chess-egt cache-stats for the desired scope")
+        raise ValueError(f"{root}: no cached leaves; run chess-egtb cache-stats for the desired scope")
     return [leaf_row(root, leaf) for leaf in leaves]
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("root", type=Path, help="Local tablebase root prepared with chess-egt cache-stats")
+    parser.add_argument("root", type=Path, help="Local tablebase root prepared with chess-egtb cache-stats")
     parser.add_argument("output", type=Path, help="CSV output file")
     args = parser.parse_args()
     try:

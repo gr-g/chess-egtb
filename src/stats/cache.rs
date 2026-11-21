@@ -15,7 +15,7 @@ use crate::stats::{AggregateStats, StatsRecord, read_record};
 use crate::storage::{Location, block_on};
 use crate::table_id::TableId;
 use crate::tablebase::thread_pool;
-use crate::{EgtError, EgtResult};
+use crate::{EgtbError, EgtbResult};
 
 /// Binds cached totals to their canonical hierarchy prefix, including its '/'.
 #[derive(Serialize, Deserialize)]
@@ -33,7 +33,7 @@ enum ReadMode {
 }
 
 /// Reads summaries when available, without creating placeholders or caches.
-pub(crate) fn query(location: &Location, selectors: &[&str]) -> EgtResult<AggregateStats> {
+pub(crate) fn query(location: &Location, selectors: &[&str]) -> EgtbResult<AggregateStats> {
     let prefixes = hierarchy_prefixes(selectors)?;
     // Validate nonhierarchical selectors before touching storage, too.
     let mut tables = if prefixes.is_none() {
@@ -58,7 +58,7 @@ pub(crate) fn query(location: &Location, selectors: &[&str]) -> EgtResult<Aggreg
 }
 
 /// Rebuilds selected summaries and creates only absent per-table sidecars.
-pub(crate) fn cache(location: &Location, selectors: &[&str]) -> EgtResult<AggregateStats> {
+pub(crate) fn cache(location: &Location, selectors: &[&str]) -> EgtbResult<AggregateStats> {
     let prefixes = hierarchy_prefixes(selectors)?;
     let tables = resolve_selectors(selectors)?;
     location.ensure_writable()?;
@@ -108,7 +108,7 @@ pub(crate) fn cache(location: &Location, selectors: &[&str]) -> EgtResult<Aggreg
 }
 
 /// Invalidates the four hierarchy summaries before publishing a table sidecar.
-pub(super) fn invalidate(location: &Location, id: &TableId) -> EgtResult<()> {
+pub(super) fn invalidate(location: &Location, id: &TableId) -> EgtbResult<()> {
     let hierarchy = id.hierarchy();
     for prefix in hierarchy.ancestors().chain([hierarchy]) {
         delete_summary(location, &prefix)?;
@@ -120,7 +120,7 @@ fn summary_path(hierarchy: &Hierarchy) -> String {
     format!("{hierarchy}stats.json")
 }
 
-fn delete_summary(location: &Location, prefix: &Hierarchy) -> EgtResult<()> {
+fn delete_summary(location: &Location, prefix: &Hierarchy) -> EgtbResult<()> {
     let key = location.key(&summary_path(prefix));
     match block_on(location.store.delete(&key)) {
         Ok(()) | Err(object_store::Error::NotFound { .. }) => Ok(()),
@@ -128,7 +128,7 @@ fn delete_summary(location: &Location, prefix: &Hierarchy) -> EgtResult<()> {
     }
 }
 
-fn read_summary(location: &Location, prefix: &Hierarchy) -> EgtResult<Option<AggregateStats>> {
+fn read_summary(location: &Location, prefix: &Hierarchy) -> EgtbResult<Option<AggregateStats>> {
     let key = location.key(&summary_path(prefix));
     let result = match block_on(location.store.get(&key)) {
         Ok(result) => result,
@@ -151,10 +151,10 @@ fn read_summary(location: &Location, prefix: &Hierarchy) -> EgtResult<Option<Agg
     Ok(Some(summary.stats))
 }
 
-fn record(location: &Location, id: &TableId, mode: ReadMode) -> EgtResult<StatsRecord> {
+fn record(location: &Location, id: &TableId, mode: ReadMode) -> EgtbResult<StatsRecord> {
     match read_record(location, id) {
         Ok(record) => return Ok(record),
-        Err(EgtError::FileNotFound(_)) => {}
+        Err(EgtbError::FileNotFound(_)) => {}
         Err(error) => return Err(error),
     }
     let missing = StatsRecord::missing(id);
@@ -183,7 +183,7 @@ fn visit_records(
     tables: &[TableId],
     mode: ReadMode,
     mut visit: impl FnMut(&TableId, StatsRecord),
-) -> EgtResult<()> {
+) -> EgtbResult<()> {
     if tables.is_empty() {
         return Ok(());
     }
@@ -230,7 +230,7 @@ mod tests {
         for operation in [query, cache] {
             assert!(matches!(
                 operation(&location, &["2", "K_K"]),
-                Err(EgtError::InvalidEndgameName { .. })
+                Err(EgtbError::InvalidEndgameName { .. })
             ));
         }
         assert!(absent(&location, "format.json"));
@@ -302,8 +302,10 @@ mod tests {
         for bytes in [b"broken".to_vec(), b"{}".to_vec()] {
             put(&location, &id.relative_path("json"), bytes);
             for result in [query(&location, &["K_K"]), cache(&location, &["2"])] {
-                assert!(matches!(result, Err(EgtError::InvalidData { location, .. })
-                    if location.ends_with("/K_K.json")));
+                assert!(
+                    matches!(result, Err(EgtbError::InvalidData { location, .. })
+                    if location.ends_with("/K_K.json"))
+                );
             }
         }
         let missing = serde_json::to_vec(&StatsRecord::missing(&id)).unwrap();
@@ -326,7 +328,7 @@ mod tests {
             let bytes = serde_json::to_vec(&value).unwrap();
             put(&location, "2/stats.json", bytes);
             assert!(matches!(query(&location, &["2"]),
-                Err(EgtError::InvalidData { location, .. }) if location.ends_with("/2/stats.json")));
+                Err(EgtbError::InvalidData { location, .. }) if location.ends_with("/2/stats.json")));
             assert!(query(&location, &["K_K"]).is_ok());
         }
         assert!(cache(&location, &["2"]).is_ok());

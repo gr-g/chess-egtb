@@ -17,7 +17,9 @@ use axum::{
     response::{IntoResponse, Response},
     routing::get,
 };
-use chess_egt::{AggregateStats, ConversionType, DtcOutcome, EgtError, Tablebase, parse_position};
+use chess_egtb::{
+    AggregateStats, ConversionType, DtcOutcome, EgtbError, Tablebase, parse_position,
+};
 use clap::Parser;
 use serde::{Deserialize, Serialize};
 use shakmaty::{CastlingMode, Chess, Position, san::SanPlus};
@@ -33,9 +35,9 @@ const MAX_OPERATIONS: usize = 8;
 const CACHE_SWEEP_INTERVAL: Duration = Duration::from_secs(60);
 
 #[derive(Debug, Parser)]
-#[command(about = "gg-EGT API server")]
+#[command(about = "gg-EGTB API server")]
 struct Cli {
-    #[arg(long, default_value = "./ggegt")]
+    #[arg(long, default_value = "./ggegtb")]
     path: PathBuf,
 
     /// Retained frame-cache memory (bytes, B, KiB, MiB, or GiB).
@@ -112,7 +114,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         // An empty selection validates the root format without loading any tables.
         tablebase.stats(&[])?;
-        Ok::<_, EgtError>(Arc::new(tablebase))
+        Ok::<_, EgtbError>(Arc::new(tablebase))
     })
     .await??;
     let listener = tokio::net::TcpListener::bind(cli.bind).await?;
@@ -356,30 +358,30 @@ impl From<QueryRejection> for ApiError {
     }
 }
 
-impl From<EgtError> for ApiError {
-    fn from(error: EgtError) -> Self {
+impl From<EgtbError> for ApiError {
+    fn from(error: EgtbError) -> Self {
         use StatusCode as S;
         let (status, code, message) = match error {
-            EgtError::InvalidEndgameName { .. } => (
+            EgtbError::InvalidEndgameName { .. } => (
                 S::BAD_REQUEST,
                 "invalid_selector",
                 "Invalid table selection",
             ),
-            EgtError::InvalidFen(_) => (S::BAD_REQUEST, "invalid_fen", "Invalid FEN"),
-            EgtError::InvalidPosition(_) => {
+            EgtbError::InvalidFen(_) => (S::BAD_REQUEST, "invalid_fen", "Invalid FEN"),
+            EgtbError::InvalidPosition(_) => {
                 (S::BAD_REQUEST, "invalid_position", "Invalid position")
             }
-            EgtError::UnsupportedPosition(reason) => {
+            EgtbError::UnsupportedPosition(reason) => {
                 (S::UNPROCESSABLE_ENTITY, "unsupported_position", reason)
             }
-            EgtError::FileNotFound(_) => (
+            EgtbError::FileNotFound(_) => (
                 S::NOT_FOUND,
                 "table_unavailable",
                 "Required tablebase data is unavailable",
             ),
             other => {
                 eprintln!("tablebase error: {other}");
-                if !matches!(other, EgtError::Storage { .. }) {
+                if !matches!(other, EgtbError::Storage { .. }) {
                     return Self::internal();
                 }
                 (
@@ -457,7 +459,7 @@ mod tests {
                 );
             }
         }
-        let cli = Cli::try_parse_from(["chess-egt-server"]).unwrap();
+        let cli = Cli::try_parse_from(["chess-egtb-server"]).unwrap();
         assert_eq!(cli.cache_size, 256 * 1024 * 1024);
         assert_eq!(cli.bind, "127.0.0.1:44348".parse::<SocketAddr>().unwrap());
     }
@@ -471,7 +473,7 @@ mod tests {
             }
         }
         let dir =
-            TestDir(std::env::temp_dir().join(format!("chess-egt-server-{}", std::process::id())));
+            TestDir(std::env::temp_dir().join(format!("chess-egtb-server-{}", std::process::id())));
         std::fs::create_dir(&dir.0).unwrap();
         let path = dir.0.clone();
         let tablebase = tokio::task::spawn_blocking(move || {

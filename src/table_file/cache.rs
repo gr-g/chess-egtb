@@ -9,7 +9,7 @@ use shakmaty::Chess;
 use super::{Frame, Source, TableFile};
 use crate::storage::Location;
 use crate::table_id::TableId;
-use crate::{DtcOutcome, EgtError, EgtResult};
+use crate::{DtcOutcome, EgtbError, EgtbResult};
 
 #[derive(Debug)]
 struct CachedFrame {
@@ -141,7 +141,7 @@ impl SharedFileCache {
         self.source = self.source.with_input(input);
     }
 
-    fn file(&self, id: &TableId) -> EgtResult<Arc<TableFile>> {
+    fn file(&self, id: &TableId) -> EgtbResult<Arc<TableFile>> {
         if let Some(file) = self.files.read().unwrap().get(id) {
             return Ok(Arc::clone(file));
         }
@@ -156,7 +156,7 @@ impl SharedFileCache {
         id: TableId,
         file: &TableFile,
         frames: &[usize],
-    ) -> EgtResult<HashMap<usize, Arc<Frame>>> {
+    ) -> EgtbResult<HashMap<usize, Arc<Frame>>> {
         let mut ready = HashMap::with_capacity(frames.len());
         let mut missing = Vec::new();
         let now = Instant::now();
@@ -181,12 +181,12 @@ impl SharedFileCache {
         Ok(ready)
     }
 
-    pub(crate) fn probe(&self, position: &Chess) -> EgtResult<DtcOutcome> {
+    pub(crate) fn probe(&self, position: &Chess) -> EgtbResult<DtcOutcome> {
         Ok(self.probe_outcomes(std::slice::from_ref(position))?[0])
     }
 
     /// Groups probes by canonical table, preserving the input order of outcomes.
-    pub(crate) fn probe_outcomes(&self, positions: &[Chess]) -> EgtResult<Vec<DtcOutcome>> {
+    pub(crate) fn probe_outcomes(&self, positions: &[Chess]) -> EgtbResult<Vec<DtcOutcome>> {
         let mut groups = HashMap::<TableId, Vec<(usize, bool)>>::new();
         for (slot, position) in positions.iter().enumerate() {
             let (id, reflected) = TableId::from_position(position)?;
@@ -200,7 +200,7 @@ impl SharedFileCache {
             let indices = requests
                 .iter()
                 .map(|&(slot, reflected)| file.index(&positions[slot], reflected))
-                .collect::<EgtResult<Vec<_>>>()?;
+                .collect::<EgtbResult<Vec<_>>>()?;
             let mut frames: Vec<_> = indices.iter().map(|&index| file.locate(index).0).collect();
             frames.sort_unstable();
             frames.dedup();
@@ -208,7 +208,7 @@ impl SharedFileCache {
             for ((slot, _), index) in requests.into_iter().zip(indices) {
                 let (frame, offset) = file.locate(index);
                 outcomes[slot] = DtcOutcome::try_from(ready[&frame].get(offset))
-                    .map_err(|value| EgtError::CorruptedOutcome { value, index })?;
+                    .map_err(|value| EgtbError::CorruptedOutcome { value, index })?;
             }
         }
         Ok(outcomes)
@@ -226,8 +226,8 @@ impl SharedFileCache {
 mod tests {
     use super::*;
     use crate::ConversionType;
-    use crate::egt_file::writer::write_fixture;
     use crate::outcome::PackedOutcome;
+    use crate::table_file::writer::write_fixture;
     use shakmaty::{CastlingMode, fen::Fen};
 
     #[test]
@@ -263,7 +263,7 @@ mod tests {
             }
         });
         let id = TableId::parse("KPa_K").unwrap();
-        std::fs::remove_file(input.0.join(id.relative_path("ggegt"))).unwrap();
+        std::fs::remove_file(input.0.join(id.relative_path("ggegtb"))).unwrap();
         assert_eq!(
             reader.probe(&position).unwrap(),
             DtcOutcome::Win(ConversionType::Promotion, 7)
@@ -370,11 +370,11 @@ mod tests {
         let reader = SharedFileCache::new(Source::new(Location::parse(&dir.0).unwrap()));
         assert!(matches!(
             reader.probe(&position),
-            Err(EgtError::FileNotFound(_))
+            Err(EgtbError::FileNotFound(_))
         ));
         assert!(
             !dir.0
-                .join(TableId::parse("KPa_K").unwrap().relative_path("ggegt"))
+                .join(TableId::parse("KPa_K").unwrap().relative_path("ggegtb"))
                 .exists()
         );
         assert!(reader.files.read().unwrap().is_empty());

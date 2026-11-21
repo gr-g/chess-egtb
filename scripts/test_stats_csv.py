@@ -27,7 +27,7 @@ class StatsCsvTests(unittest.TestCase):
         self.base = Path(self.temporary.name)
         self.root = self.base / "tables"
         self.root.mkdir()
-        self.put_json(self.root / "format.json", {"format": "ggegt-v0.13"})
+        self.put_json(self.root / "format.json", {"format": "ggegtb-v0.13"})
 
     def put_json(self, path, value):
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -224,8 +224,8 @@ class StatsCsvTests(unittest.TestCase):
 
     def test_format_validation_requires_exact_supported_object(self):
         self.assertEqual(stats_csv.validate_root(self.root), self.root.resolve())
-        for value in ({"format": "ggegt-v0.11"}, {}, {"format": None},
-                      {"format": "ggegt-v0.13", "extra": True}, [], "ggegt-v0.13"):
+        for value in ({"format": "ggegtb-v0.11"}, {}, {"format": None},
+                      {"format": "ggegtb-v0.13", "extra": True}, [], "ggegtb-v0.13"):
             with self.subTest(value=value):
                 self.put_json(self.root / "format.json", value)
                 with self.assertRaises(ValueError):
@@ -269,7 +269,7 @@ class StatsCsvTests(unittest.TestCase):
                 target = changed["stats"]["totals"] if key in OUTCOMES else changed["stats"]
                 target[key] += 1
                 self.put_json(leaf / "stats.json", changed)
-                with self.assertRaisesRegex(ValueError, "run chess-egt cache-stats"):
+                with self.assertRaisesRegex(ValueError, "run chess-egtb cache-stats"):
                     leaf_stats.leaf_row(self.root, leaf)
 
     def test_missing_sidecar_is_rejected_as_stale_cache(self):
@@ -395,7 +395,7 @@ class StatsCsvTests(unittest.TestCase):
                     self.assertEqual(rows[1]["estimated_final_size_gib"], "0.225000")
 
     def test_cli_reports_invalid_format_without_creating_output(self):
-        self.put_json(self.root / "format.json", {"format": "ggegt-v0.11"})
+        self.put_json(self.root / "format.json", {"format": "ggegtb-v0.11"})
         for script in ("export_table_stats.py", "export_summary_stats.py"):
             with self.subTest(script=script):
                 output = self.base / (script + ".csv")

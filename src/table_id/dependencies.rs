@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use super::{EgtSide, NONPAWN_ROLES, PawnKey, Role, TableId, role_index, sides};
+use super::{NONPAWN_ROLES, PawnKey, Role, Side, TableId, role_index, sides};
 
 // Zero is empty, one is STM, two is SNTM; indices are normalized ranks 1..8.
 type Layout = [u8; 8];
@@ -13,7 +13,7 @@ fn layouts(word: u8) -> Vec<Layout> {
             let mut layout = [0; 8];
             let ranks = (0..6).filter(|&rank| mask & (1 << rank) != 0);
             for (rank, side) in ranks.zip(sides(word)) {
-                layout[rank + 1] = if side == EgtSide::SideToMove { 1 } else { 2 };
+                layout[rank + 1] = if side == Side::SideToMove { 1 } else { 2 };
             }
             layout
         })

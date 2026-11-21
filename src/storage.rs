@@ -2,7 +2,7 @@
 //!
 //! Each root requires an immutable `format.json` identifying the format.
 //! Generation creates it conditionally; readers only validate it. Table data and
-//! optional statistics use `TableId::relative_path("ggegt")` and `relative_path("json")`.
+//! optional statistics use `TableId::relative_path("ggegtb")` and `relative_path("json")`.
 //! Neither probing nor format validation requires statistics.
 
 use std::future::Future;
@@ -16,9 +16,9 @@ use serde::{Deserialize, Serialize};
 use tokio::runtime::Runtime;
 use url::Url;
 
-use crate::{EgtError, EgtResult};
+use crate::{EgtbError, EgtbResult};
 
-const TABLEBASE_FORMAT: &str = "ggegt-v0.13";
+const TABLEBASE_FORMAT: &str = "ggegtb-v0.13";
 
 /// Root metadata is immutable and independent of optional per-table statistics.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -47,29 +47,32 @@ pub(crate) struct Location {
 }
 
 impl Location {
-    pub(crate) fn parse(path: impl AsRef<Path>) -> EgtResult<Self> {
+    pub(crate) fn parse(path: impl AsRef<Path>) -> EgtbResult<Self> {
         let path = path.as_ref();
         let url = if let Some(text) = path.to_str().filter(|text| text.contains("://")) {
-            Url::parse(text).map_err(|error| EgtError::InvalidStorageLocation(error.to_string()))?
+            Url::parse(text)
+                .map_err(|error| EgtbError::InvalidStorageLocation(error.to_string()))?
         } else {
             let absolute = std::path::absolute(path)?;
             Url::from_directory_path(absolute).map_err(|_| {
-                EgtError::InvalidStorageLocation("cannot represent local directory as a URL".into())
+                EgtbError::InvalidStorageLocation(
+                    "cannot represent local directory as a URL".into(),
+                )
             })?
         };
         if !url.username().is_empty() || url.password().is_some() {
-            return Err(EgtError::InvalidStorageLocation(
+            return Err(EgtbError::InvalidStorageLocation(
                 "URL userinfo is unsupported; configure credentials through environment variables"
                     .into(),
             ));
         }
         if url.query().is_some() || url.fragment().is_some() {
-            return Err(EgtError::InvalidStorageLocation(
+            return Err(EgtbError::InvalidStorageLocation(
                 "URL queries and fragments are unsupported".into(),
             ));
         }
         let display = url.to_string();
-        let (scheme, _) = ObjectStoreScheme::parse(&url).map_err(|source| EgtError::Storage {
+        let (scheme, _) = ObjectStoreScheme::parse(&url).map_err(|source| EgtbError::Storage {
             location: display.clone(),
             source: source.into(),
         })?;
@@ -79,7 +82,7 @@ impl Location {
         let options = std::env::vars_os()
             .filter_map(|(key, value)| Some((key.into_string().ok()?, value.into_string().ok()?)));
         let (store, prefix) =
-            object_store::parse_url_opts(&url, options).map_err(|source| EgtError::Storage {
+            object_store::parse_url_opts(&url, options).map_err(|source| EgtbError::Storage {
                 location: display.clone(),
                 source,
             })?;
@@ -109,12 +112,12 @@ impl Location {
         format!("{}/{}", self.display.trim_end_matches('/'), suffix)
     }
 
-    pub(crate) fn error(&self, key: &ObjectPath, source: object_store::Error) -> EgtError {
+    pub(crate) fn error(&self, key: &ObjectPath, source: object_store::Error) -> EgtbError {
         let location = self.describe(key);
         if matches!(source, object_store::Error::NotFound { .. }) {
-            EgtError::FileNotFound(location)
+            EgtbError::FileNotFound(location)
         } else {
-            EgtError::Storage { location, source }
+            EgtbError::Storage { location, source }
         }
     }
 
@@ -122,8 +125,8 @@ impl Location {
         &self,
         key: &ObjectPath,
         source: impl Into<Box<dyn std::error::Error + Send + Sync>>,
-    ) -> EgtError {
-        EgtError::InvalidData {
+    ) -> EgtbError {
+        EgtbError::InvalidData {
             location: self.describe(key),
             source: source.into(),
         }
@@ -132,7 +135,7 @@ impl Location {
     /// Validates an existing root descriptor without creating or modifying objects.
     /// Success is shared across clones; errors are never cached. Roots must remain
     /// immutable while a Location is in use, including after this validation.
-    pub(crate) fn validate_format(&self) -> EgtResult<()> {
+    pub(crate) fn validate_format(&self) -> EgtbResult<()> {
         if self.format_validated.get().is_some() {
             return Ok(());
         }
@@ -142,7 +145,7 @@ impl Location {
         let actual: FormatDescriptor =
             serde_json::from_slice(&bytes).map_err(|error| self.invalid_data(&key, error))?;
         if actual != FormatDescriptor::default() {
-            return Err(EgtError::InvalidStorageLocation(format!(
+            return Err(EgtbError::InvalidStorageLocation(format!(
                 "unsupported tablebase format at {}: {:?}",
                 self.describe(&key),
                 actual
@@ -153,11 +156,11 @@ impl Location {
     }
 
     /// Creates the descriptor once; concurrent generators never overwrite metadata.
-    pub(crate) fn ensure_format(&self) -> EgtResult<()> {
+    pub(crate) fn ensure_format(&self) -> EgtbResult<()> {
         self.ensure_writable()?;
         match self.validate_format() {
             Ok(()) => return Ok(()),
-            Err(EgtError::FileNotFound(_)) => {}
+            Err(EgtbError::FileNotFound(_)) => {}
             Err(error) => return Err(error),
         }
         let key = self.prefix.clone().join("format.json");
@@ -176,9 +179,9 @@ impl Location {
         }
     }
 
-    pub(crate) fn ensure_writable(&self) -> EgtResult<()> {
+    pub(crate) fn ensure_writable(&self) -> EgtbResult<()> {
         if !self.writable {
-            return Err(EgtError::InvalidStorageLocation(format!(
+            return Err(EgtbError::InvalidStorageLocation(format!(
                 "HTTP storage is read-only: {}",
                 self.display
             )));
@@ -211,7 +214,7 @@ mod tests {
         let key = location.prefix.clone().join("format.json");
         assert!(matches!(
             location.validate_format(),
-            Err(EgtError::FileNotFound(_))
+            Err(EgtbError::FileNotFound(_))
         ));
         assert!(matches!(
             block_on(location.store.head(&key)),
@@ -240,17 +243,17 @@ mod tests {
         let key = location.prefix.clone().join("format.json");
         assert!(matches!(
             clone.validate_format(),
-            Err(EgtError::FileNotFound(_))
+            Err(EgtbError::FileNotFound(_))
         ));
 
         block_on(location.store.put(&key, b"not json".to_vec().into())).unwrap();
         assert!(
-            matches!(clone.validate_format(), Err(EgtError::InvalidData { location, .. })
+            matches!(clone.validate_format(), Err(EgtbError::InvalidData { location, .. })
             if location.ends_with("/format.json"))
         );
         assert!(matches!(
             clone.ensure_format(),
-            Err(EgtError::InvalidData { .. })
+            Err(EgtbError::InvalidData { .. })
         ));
 
         let bytes = serde_json::to_vec(&FormatDescriptor::default()).unwrap();
@@ -267,7 +270,7 @@ mod tests {
         };
         assert!(matches!(
             fresh.validate_format(),
-            Err(EgtError::InvalidData { .. })
+            Err(EgtbError::InvalidData { .. })
         ));
     }
 
@@ -275,15 +278,15 @@ mod tests {
     fn previous_format_is_rejected_without_modification() {
         let location = Location::parse("memory:///tables").unwrap();
         let key = location.prefix.clone().join("format.json");
-        let bytes = br#"{"format":"ggegt-v0.12"}"#.to_vec();
+        let bytes = br#"{"format":"ggegt-v0.13"}"#.to_vec();
         block_on(location.store.put(&key, bytes.clone().into())).unwrap();
         assert!(matches!(
             location.validate_format(),
-            Err(EgtError::InvalidStorageLocation(_))
+            Err(EgtbError::InvalidStorageLocation(_))
         ));
         assert!(matches!(
             location.ensure_format(),
-            Err(EgtError::InvalidStorageLocation(_))
+            Err(EgtbError::InvalidStorageLocation(_))
         ));
         let result = block_on(location.store.get(&key)).unwrap();
         assert_eq!(block_on(result.bytes()).unwrap().as_ref(), bytes.as_slice());
@@ -316,8 +319,8 @@ mod tests {
         );
         relative.ensure_writable().unwrap();
         assert_eq!(
-            relative.describe(&relative.prefix.clone().join("K_K.ggegt")),
-            format!("{}K_K.ggegt", relative.display)
+            relative.describe(&relative.prefix.clone().join("K_K.ggegtb")),
+            format!("{}K_K.ggegtb", relative.display)
         );
     }
 
@@ -353,7 +356,7 @@ mod tests {
             assert!(
                 matches!(
                     Location::parse(text),
-                    Err(EgtError::InvalidStorageLocation(_))
+                    Err(EgtbError::InvalidStorageLocation(_))
                 ),
                 "accepted unsupported URL: {text}"
             );
@@ -370,7 +373,7 @@ mod tests {
             ("memory:///", ""),
         ] {
             let location = Location::parse(url).unwrap();
-            for extension in ["ggegt", "json"] {
+            for extension in ["ggegtb", "json"] {
                 let relative = id.relative_path(extension);
                 let key = location.key(&relative);
                 assert_eq!(

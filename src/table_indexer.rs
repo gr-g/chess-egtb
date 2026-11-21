@@ -65,7 +65,7 @@
 //! occupied EP path squares, or no legal EP capture are rejected during validation.
 
 use crate::position::InvalidPosition;
-use crate::table_id::{EgtSide, MAX_PIECES, NONPAWN_ROLES, TableId, sides};
+use crate::table_id::{MAX_PIECES, NONPAWN_ROLES, Side, TableId, sides};
 use arrayvec::ArrayVec;
 use shakmaty::{CastlingMode, Chess, Color, File, Piece, Position, Rank, Role, Setup, Square};
 use std::cmp::Reverse;
@@ -177,7 +177,7 @@ static KINGS_MAP: std::sync::LazyLock<KingsMap> = std::sync::LazyLock::new(|| {
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum IndexerPieceKind {
-    Pieces { role: Role, side: EgtSide },
+    Pieces { role: Role, side: Side },
     // Distinct colors: a pawnless lookup, or an ordered two-square combination.
     KingPair,
 }
@@ -197,7 +197,7 @@ type PawnRanks = (ArrayVec<u8, 6>, Option<u8>);
 #[derive(Clone, Debug)]
 struct IndexerPawnGroup {
     file: File,
-    order: ArrayVec<EgtSide, 6>,
+    order: ArrayVec<Side, 6>,
     span: (usize, usize),
 }
 
@@ -241,7 +241,7 @@ impl PawnMap {
         self.insert((ranks.clone(), None));
         for victim in groups {
             // The highest pawn must be the victim, leaving ranks 6 and 7 empty.
-            if ranks[victim.span.0] != 4 || victim.order.last() != Some(&EgtSide::SideNotToMove) {
+            if ranks[victim.span.0] != 4 || victim.order.last() != Some(&Side::SideNotToMove) {
                 continue;
             }
             let has_capturer = groups.iter().any(|neighbor| {
@@ -249,7 +249,7 @@ impl PawnMap {
                     && ranks[neighbor.span.0..neighbor.span.1]
                         .iter()
                         .zip(neighbor.order.iter().rev())
-                        .any(|(&rank, &side)| rank == 4 && side == EgtSide::SideToMove)
+                        .any(|(&rank, &side)| rank == 4 && side == Side::SideToMove)
             });
             if has_capturer {
                 self.insert((ranks.clone(), Some(victim.file.to_u32() as u8)));
@@ -330,7 +330,7 @@ impl TableIndexer {
         let mut pieces_if_white_is_stm = ArrayVec::new();
         let piece = |role, side| Piece {
             role,
-            color: if side == EgtSide::SideToMove {
+            color: if side == Side::SideToMove {
                 Color::White
             } else {
                 Color::Black
@@ -347,7 +347,7 @@ impl TableIndexer {
             });
         }
         for role in NONPAWN_ROLES {
-            for side in [EgtSide::SideToMove, EgtSide::SideNotToMove] {
+            for side in [Side::SideToMove, Side::SideNotToMove] {
                 let count = id.piece_count(side, role);
                 if count == 0 {
                     continue;
@@ -684,7 +684,7 @@ impl TableIndexer {
                 .unwrap();
                 debug_assert_eq!(
                     position.board().by_color(position.turn()).contains(square),
-                    *expected_side == EgtSide::SideToMove,
+                    *expected_side == Side::SideToMove,
                     "pawn color order does not match the piece set"
                 );
                 let rank = square.rank().to_usize();
@@ -699,7 +699,7 @@ impl TableIndexer {
         for p in &self.nonpawns {
             match &p.kind {
                 IndexerPieceKind::Pieces { role, side } => {
-                    let color = if *side == EgtSide::SideToMove {
+                    let color = if *side == Side::SideToMove {
                         position.turn()
                     } else {
                         !position.turn()
@@ -959,7 +959,7 @@ mod tests {
         parse_oriented,
         test_support::{pawn_group, with_pawns},
     };
-    use EgtSide::{SideNotToMove as SNTM, SideToMove as STM};
+    use Side::{SideNotToMove as SNTM, SideToMove as STM};
     use shakmaty::PositionError;
 
     #[test]

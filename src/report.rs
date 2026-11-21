@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use crate::{AggregateStats, EgtStats};
+use crate::{AggregateStats, TableStats};
 
 /// Formats wall time and allocated core time per index slot.
 pub(crate) fn format_timing(elapsed: Duration, index_range: usize, threads: usize) -> String {
@@ -53,7 +53,7 @@ pub(crate) fn generation_summary(
 }
 
 /// Prints table-specific statistics (wins, draws, losses, compression).
-pub(crate) fn print_table_stats(stats: &EgtStats) {
+pub(crate) fn print_table_stats(stats: &TableStats) {
     let unique_positions = stats.totals.unique_positions;
     let compressed_size_mb = stats.totals.bytes as f64 / (1024.0 * 1024.0);
     let bits_per_pos = if unique_positions > 0 {

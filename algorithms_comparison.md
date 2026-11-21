@@ -1,7 +1,7 @@
 # Endgame Tablebase Generation: Comparative Analysis
 
 A comparison of the current generation algorithms and storage architectures in:
-- **chess-egt** (our Rust project)
+- **chess-egtb** (our Rust project)
 - **Syzygy `tb`** by Ronald de Man (`https://github.com/syzygy1/tb`)
 - **Prophet TB** (`https://github.com/markus7800/prophet_tb_gen_and_probe`)
 - **chesstb** by Bojun Guo (`https://github.com/noobpwnftw/chesstb`)
@@ -15,7 +15,7 @@ The comparisons below are based on source inspection, not cross-engine benchmark
 
 ## 1. High-Level Comparison Table
 
-| Feature / Dimension | **chess-egt** | **Syzygy (`tb`)** | **Prophet** | **chesstb** |
+| Feature / Dimension | **chess-egtb** | **Syzygy (`tb`)** | **Prophet** | **chesstb** |
 | :--- | :--- | :--- | :--- | :--- |
 | **Metrics** | DTC (Distance to Conversion) | WDL + DTZ with 50-move-rule information | DTM, ignoring the 50-move rule | WDL, DTZ, DTC, DTM, DTM50 |
 | **Working Representation** | `AtomicU16`: 3-bit status + 13-bit counter / distance | `uint8_t`: status and ply codes | `int16_t`: signed mate distance and flags | Metric-specific packed entries; 16-bit distance entries |
@@ -37,7 +37,7 @@ between engines, so bytes per index alone do not determine relative memory use.
 
 ### A. Resolution Strategy: Decremental Counters vs. Candidate Verification
 
-**chess-egt** resolves losses without regenerating their forward moves during
+**chess-egtb** resolves losses without regenerating their forward moves during
 propagation:
 
 1. Initialization stores the number of moves not yet known to lose in the 13 spare
@@ -78,7 +78,7 @@ for deep, sparse frontiers; block/group skipping mitigates this.
 
 ### B. Memory Allocation & Scaling to 6+ Pieces
 
-- **chess-egt:** the current logical table pair is held in flat `Vec<AtomicU16>`
+- **chess-egtb:** the current logical table pair is held in flat `Vec<AtomicU16>`
   arrays. For distinct twins the base cost is `2 * (indices_A + indices_B)` bytes;
   a self-twin needs one array. Block summaries, cached dependency frames and
   finalization buffers are additional. Pawn-file/order partitioning reduces the
@@ -110,7 +110,7 @@ symmetry duplicate. With pawns, only file reflection remains as a spatial board
 symmetry; color/rank normalization is a separate operation. chesstb additionally
 supports castling tables, where those spatial reductions are disabled.
 
-- **chess-egt:** pawnless kings use 462 canonical non-attacking pairs. When both
+- **chess-egtb:** pawnless kings use 462 canonical non-attacking pairs. When both
   kings lie on the long diagonal, other pieces can still distinguish two
   reflected indices; both are populated, and one is counted as redundant in
   unique-position statistics. Edges crossing these symmetry cases require
@@ -134,7 +134,7 @@ Conversions connect a table to different material configurations; promotion
 need not reduce the number of pieces. These dependencies must be solved before
 the parent can incorporate their results.
 
-- **chess-egt:** initialization decodes parent positions, plays legal captures
+- **chess-egtb:** initialization decodes parent positions, plays legal captures
   (including en passant) and promotions, and probes existing dependencies through
   the shared reader/cache. Selected prerequisites can be generated earlier, but
   the solver does not recursively generate missing tables. Propagation then uses
@@ -158,7 +158,7 @@ the parent can incorporate their results.
 
 **Final codecs and value transforms:**
 
-- **chess-egt:** each exact canonical table is a seekable Zstd object, with
+- **chess-egtb:** each exact canonical table is a seekable Zstd object, with
   independent frames using the dimension-aligned `TableIndexer` frame size. Each frame
   stores a little-endian `u16` palette count and raw `u16` outcome entries ordered
   by descending frequency, breaking ties by ascending numeric raw value. Constant
@@ -183,7 +183,7 @@ the parent can incorporate their results.
 **Dropping one side to move:** this is a storage/probing tradeoff, not an inherent
 halving of generation memory or file size.
 
-- chess-egt publishes each distinct twin table and does not reconstruct an
+- chess-egtb publishes each distinct twin table and does not reconstruct an
   omitted twin by minimax probing. A self-twin shares one table by symmetry,
   which is different from dropping a side.
 - Syzygy stores both sides in asymmetric **WDL** files, but only one side in
@@ -205,7 +205,7 @@ recover them from conversions. Relaxed WDL combines a stored lower class with
 capture/promotion bounds; relaxed DTZ can omit winning DTZ-1 cells justified by a
 class-preserving zeroing move, including a pawn move. These are metric-specific
 rules, not permission to replace arbitrary exact DTM/DTC values after a winning
-capture. chess-egt does not currently use such probe-time relaxation.
+capture. chess-egtb does not currently use such probe-time relaxation.
 
 ### F. Indexing Approaches & Compression Permutation Search
 
@@ -216,7 +216,7 @@ but simplify scans and unmoves. A file layout can differ from both.
 
 | Project | Working Index | File Index / Compression Ordering |
 | :--- | :--- | :--- |
-| **chess-egt** | Compact mixed-radix groups, with occupied-square compaction and combinatorial ranking of identical pieces; pawn-file/order partitioning | Same index order; per-frame frequency-ranked palette indices, no compression-driven position permutation search |
+| **chess-egtb** | Compact mixed-radix groups, with occupied-square compaction and combinatorial ranking of identical pieces; pawn-file/order partitioning | Same index order; per-frame frequency-ranked palette indices, no compression-driven position permutation search |
 | **Syzygy** | Regular pawnless king-pair index plus six-bit square fields; pawn-pivot/file partitions for pawnful generation | Separate compact combinatorial encoding; searches piece-type/factor order using estimated compressed size |
 | **Prophet** | King-pair index plus fixed-order combinatorial piece groups; extra en passant region | Same order as the working arrays; no permutation search found in the reviewed indexing/compression paths |
 | **chesstb** | Pawn slice × king slice × mixed-radix nonpawn classes; identical pieces ranked within each class | Keeps slice geometry but searches permutations of nonpawn-class dimensions, per output/color |
@@ -250,7 +250,7 @@ patterns near one another without changing the answers:
   comparing compressed sizes of evenly spaced sample blocks. This is exhaustive
   over those permutations, but sampled over contents, so not a whole-file optimum
   guarantee.
-- **chess-egt** does **not** perform this search. Its group order is fixed, and
+- **chess-egtb** does **not** perform this search. Its group order is fixed, and
   finalization only transforms values within that order. **Prophet** likewise has
   no compression-driven permutation search in the reviewed paths.
 
@@ -258,9 +258,9 @@ patterns near one another without changing the answers:
 
 The relevant implementations in the compared repositories are:
 
-- **chess-egt:** [`src/generator/solver.rs`](src/generator/solver.rs),
+- **chess-egtb:** [`src/generator/solver.rs`](src/generator/solver.rs),
   [`src/egt/indexer.rs`](src/egt/indexer.rs),
-  [`src/egt_file.rs`](src/egt_file.rs),
+  [`src/table_file.rs`](src/table_file.rs),
   [`src/generator/finalization.rs`](src/generator/finalization.rs).
 - **Syzygy:** `src/rtbgen.c`, `src/rtbgenp.c` (resolution and initialization);
   `src/tbgen.c`, `src/tbgenp.c` (allocation/output stages); `src/probe.c`

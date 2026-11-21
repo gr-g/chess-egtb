@@ -6,9 +6,9 @@
 //! local directories or supported object-store URLs.
 //!
 //! ```no_run
-//! use chess_egt::{EgtResult, Tablebase};
+//! use chess_egtb::{EgtbResult, Tablebase};
 //!
-//! fn inspect(root: &str) -> EgtResult<()> {
+//! fn inspect(root: &str) -> EgtbResult<()> {
 //!     let mut tablebase = Tablebase::new(root)?;
 //!     tablebase.set_threads(2);
 //!     tablebase.verify(&["KQ_K", "K_KQ"])?;
@@ -29,16 +29,15 @@
 //! the required tables for each job. Statistics describe the base root only and
 //! do not use the frame cache. Do not rebuild metadata concurrently with
 //! generation or another rebuild. Malformed artifacts return
-//! [`EgtError::InvalidData`] with their location and source error; backend
-//! failures return [`EgtError::Storage`].
-//! Unsupported root format versions return [`EgtError::InvalidStorageLocation`].
+//! [`EgtbError::InvalidData`] with their location and source error; backend
+//! failures return [`EgtbError::Storage`].
+//! Unsupported root format versions return [`EgtbError::InvalidStorageLocation`].
 //!
 //! All storage operations block the calling thread, including remote reads and
 //! writes. Async applications should use [`tokio::task::spawn_blocking`] for
 //! construction, configuration, generation, probing, verification, and statistics
 //! operations rather than calling them directly from an async task.
 
-mod egt_file;
 mod error;
 mod generator;
 mod outcome;
@@ -48,15 +47,16 @@ mod report;
 mod selection;
 mod stats;
 mod storage;
+mod table_file;
 mod table_id;
 mod table_indexer;
 mod tablebase;
 mod verification;
 
-pub use error::{EgtError, EgtResult};
+pub use error::{EgtbError, EgtbResult};
 pub use outcome::{ConversionType, DtcOutcome};
 pub use selection::resolve_selectors;
-pub use stats::{AggregateStats, EgtStats, LongestDtcPosition, Totals};
+pub use stats::{AggregateStats, LongestDtcPosition, TableStats, Totals};
 #[cfg(test)]
 use std::path::PathBuf;
 pub use table_id::TableId;
@@ -73,7 +73,7 @@ pub(crate) struct TestDir(pub PathBuf);
 #[cfg(test)]
 impl TestDir {
     pub(crate) fn new(name: &str) -> Self {
-        let dir = std::env::temp_dir().join("chess-egt-tests").join(format!(
+        let dir = std::env::temp_dir().join("chess-egtb-tests").join(format!(
             "{}-{}",
             name,
             std::process::id()

@@ -10,12 +10,14 @@ use rayon::prelude::*;
 use self::stats::StatsAccumulator;
 use super::WinLoss;
 use crate::TableIndexer;
-use crate::egt_file::writer::{COMPRESSION_LEVEL, CompressedSegment, EgtFileWriter, encode_frame};
-use crate::error::{EgtError, EgtResult};
+use crate::error::{EgtbError, EgtbResult};
 use crate::outcome::PackedOutcome;
 use crate::position::InvalidCounts;
-use crate::stats::{EgtStats, write_stats};
+use crate::stats::{TableStats, write_stats};
 use crate::storage::Location;
+use crate::table_file::writer::{
+    COMPRESSION_LEVEL, CompressedSegment, TableFileWriter, encode_frame,
+};
 use crate::table_id::TableId;
 
 fn finalize_batch(
@@ -24,7 +26,7 @@ fn finalize_batch(
     egt: &TableIndexer,
     frame_size: usize,
     maxima: WinLoss<u16>,
-) -> EgtResult<(CompressedSegment, StatsAccumulator)> {
+) -> EgtbResult<(CompressedSegment, StatsAccumulator)> {
     let mut data = Vec::new();
     let mut encoder = zeekstd::EncodeOptions::new()
         .compression_level(COMPRESSION_LEVEL)
@@ -76,12 +78,12 @@ pub(super) fn finalize_table(
     mut values: Vec<AtomicU16>,
     maxima: WinLoss<u16>,
     invalid: InvalidCounts,
-) -> EgtResult<EgtStats> {
+) -> EgtbResult<TableStats> {
     if values.len() != egt.index_range() {
-        return Err(EgtError::Internal("completed table has wrong length"));
+        return Err(EgtbError::Internal("completed table has wrong length"));
     }
     let frame_size = egt.frame_size();
-    let writer = EgtFileWriter::new(location, id, egt.index_range(), frame_size)?;
+    let writer = TableFileWriter::new(location, id, egt.index_range(), frame_size)?;
     let frames = values.len().div_ceil(frame_size);
     let batch_size = frames.div_ceil(rayon::current_num_threads()).max(1) * frame_size;
     // Contiguous batches reuse one encoder each. Indexed collection preserves
@@ -92,7 +94,7 @@ pub(super) fn finalize_table(
         .map(|(idx, batch)| finalize_batch(batch, idx * batch_size, egt, frame_size, maxima))
         .collect();
     drop(values);
-    let batches = batches.into_iter().collect::<EgtResult<Vec<_>>>()?;
+    let batches = batches.into_iter().collect::<EgtbResult<Vec<_>>>()?;
     let (segments, parts): (Vec<_>, Vec<_>) = batches.into_iter().unzip();
     let mut stats = StatsAccumulator::default();
     stats.merge(parts);
@@ -121,9 +123,9 @@ mod tests {
                 WinLoss::default(),
                 InvalidCounts::default()
             ),
-            Err(EgtError::Internal("completed table has wrong length"))
+            Err(EgtbError::Internal("completed table has wrong length"))
         ));
-        assert!(!dir.0.join(id.relative_path("ggegt")).exists());
+        assert!(!dir.0.join(id.relative_path("ggegtb")).exists());
         assert!(!dir.0.join(id.relative_path("json")).exists());
     }
 }

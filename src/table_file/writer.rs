@@ -8,7 +8,7 @@ use sha2::{Digest, Sha256};
 use tokio::io::AsyncWriteExt;
 
 use super::frame;
-use crate::error::{EgtError, EgtResult};
+use crate::error::{EgtbError, EgtbResult};
 use crate::outcome::PackedOutcome;
 use crate::storage::{Location, block_on};
 use crate::table_id::TableId;
@@ -23,27 +23,27 @@ pub(crate) struct CompressedSegment {
     pub(crate) frame_lengths: Vec<usize>,
 }
 
-pub(crate) struct EgtFileWriter {
+pub(crate) struct TableFileWriter {
     location: Location,
     key: ObjectPath,
     frame_size: usize,
     length: usize,
 }
 
-impl EgtFileWriter {
+impl TableFileWriter {
     pub(crate) fn new(
         location: &Location,
         id: &TableId,
         length: usize,
         frame_size: usize,
-    ) -> EgtResult<Self> {
+    ) -> EgtbResult<Self> {
         if frame_size == 0 || frame::max_length(frame_size) > u32::MAX as usize {
-            return Err(EgtError::Internal("invalid writer frame size"));
+            return Err(EgtbError::Internal("invalid writer frame size"));
         }
         location.ensure_format()?;
         Ok(Self {
             location: location.clone(),
-            key: location.key(&id.relative_path("ggegt")),
+            key: location.key(&id.relative_path("ggegtb")),
             frame_size,
             length,
         })
@@ -51,7 +51,7 @@ impl EgtFileWriter {
 
     /// Validates all batches before publishing, without concatenating their buffers.
     /// The caller supplies segments in frame order.
-    pub(crate) fn publish(self, segments: Vec<CompressedSegment>) -> EgtResult<(u64, String)> {
+    pub(crate) fn publish(self, segments: Vec<CompressedSegment>) -> EgtbResult<(u64, String)> {
         let length = self.length;
         let mut table = zeekstd::SeekTable::new();
 
@@ -59,12 +59,12 @@ impl EgtFileWriter {
         for segment in &segments {
             let num_frames = segment.seek_table.num_frames();
             if segment.frame_lengths.len() != num_frames as usize {
-                return Err(EgtError::Internal(
+                return Err(EgtbError::Internal(
                     "compressed segment has wrong position counts",
                 ));
             }
             if num_frames == 0 && !(length == 0 && segments.len() == 1 && segment.data.is_empty()) {
-                return Err(EgtError::Internal("compressed segment has no frames"));
+                return Err(EgtbError::Internal("compressed segment has no frames"));
             }
             let mut compressed_length = 0u64;
             for index in 0..num_frames {
@@ -75,7 +75,7 @@ impl EgtFileWriter {
                     || compressed == 0
                     || !frame::valid_length(decompressed, frame_length)
                 {
-                    return Err(EgtError::Internal(
+                    return Err(EgtbError::Internal(
                         "compressed segment has invalid frame lengths",
                     ));
                 }
@@ -84,13 +84,15 @@ impl EgtFileWriter {
                 remaining -= frame_length;
             }
             if compressed_length != segment.data.len() as u64 {
-                return Err(EgtError::Internal(
+                return Err(EgtbError::Internal(
                     "compressed segment has wrong data length",
                 ));
             }
         }
         if remaining != 0 {
-            return Err(EgtError::Internal("compressed table has wrong frame count"));
+            return Err(EgtbError::Internal(
+                "compressed table has wrong frame count",
+            ));
         }
         let mut footer = Vec::new();
         table.into_serializer().read_to_end(&mut footer)?;
@@ -109,7 +111,7 @@ fn publish_buffers(
     location: &Location,
     key: &ObjectPath,
     buffers: impl IntoIterator<Item = Bytes>,
-) -> EgtResult<(u64, String)> {
+) -> EgtbResult<(u64, String)> {
     location.ensure_writable()?;
     block_on(async {
         let mut writer =
@@ -131,13 +133,16 @@ fn publish_buffers(
         }
         // shutdown completes publication and delegates completion-error cleanup
         // to object_store; abort cannot be called after this consumes its upload.
-        writer.shutdown().await.map_err(|error| EgtError::Storage {
-            location: location.describe(key),
-            source: object_store::Error::Generic {
-                store: "tablebase publication",
-                source: Box::new(error),
-            },
-        })?;
+        writer
+            .shutdown()
+            .await
+            .map_err(|error| EgtbError::Storage {
+                location: location.describe(key),
+                source: object_store::Error::Generic {
+                    store: "tablebase publication",
+                    source: Box::new(error),
+                },
+            })?;
         Ok((length, hex::encode(hash.finalize())))
     })
 }
@@ -145,7 +150,7 @@ fn publish_buffers(
 pub(crate) fn encode_frame<W: Write>(
     encoder: &mut zeekstd::Encoder<'_, W>,
     values: &[PackedOutcome],
-) -> EgtResult<()> {
+) -> EgtbResult<()> {
     encoder.compress(&frame::encode(values)?)?;
     encoder.end_frame()?;
     Ok(())
@@ -157,7 +162,7 @@ pub(crate) fn write_fixture(
     base: &std::path::Path,
     name: &str,
     outcome: impl Fn(usize) -> PackedOutcome,
-) -> crate::egt_file::TableFile {
+) -> crate::table_file::TableFile {
     let location = Location::parse(base).unwrap();
     let id = TableId::parse(name).unwrap();
     let egt = crate::TableIndexer::new(&id);
@@ -179,9 +184,9 @@ pub(crate) fn write_fixture(
         }
     }
     encoder.finish().unwrap();
-    let key = location.key(&id.relative_path("ggegt"));
+    let key = location.key(&id.relative_path("ggegtb"));
     publish_buffers(&location, &key, [data.into()]).unwrap();
-    crate::egt_file::TableFile::open(&location, &id).unwrap()
+    crate::table_file::TableFile::open(&location, &id).unwrap()
 }
 
 #[cfg(test)]
@@ -190,10 +195,10 @@ mod tests {
     use object_store::ObjectStoreExt;
     use std::{fs, path::Path};
 
-    fn writer(base: &Path, name: &str) -> EgtFileWriter {
+    fn writer(base: &Path, name: &str) -> TableFileWriter {
         let id = TableId::parse(name).unwrap();
         let egt = crate::TableIndexer::new(&id);
-        EgtFileWriter::new(
+        TableFileWriter::new(
             &Location::parse(base).unwrap(),
             &id,
             egt.index_range(),
@@ -242,7 +247,7 @@ mod tests {
         assert_eq!(
             fs::read(
                 dir.0
-                    .join(TableId::parse("K_K").unwrap().relative_path("ggegt"))
+                    .join(TableId::parse("K_K").unwrap().relative_path("ggegtb"))
             )
             .unwrap(),
             expected
@@ -252,7 +257,7 @@ mod tests {
     #[test]
     fn publication_roundtrip_in_memory() {
         let location = Location::parse("memory:///tables").unwrap();
-        let key = location.key("2/1v1/op0/0pawns/K_K.ggegt");
+        let key = location.key("2/1v1/op0/0pawns/K_K.ggegtb");
         for length in [
             0,
             UPLOAD_BUFFER_SIZE,
@@ -307,7 +312,7 @@ mod tests {
         }
         assert!(
             !dir.0
-                .join(TableId::parse("KPa_K").unwrap().relative_path("ggegt"))
+                .join(TableId::parse("KPa_K").unwrap().relative_path("ggegtb"))
                 .exists()
         );
     }
@@ -333,7 +338,7 @@ mod tests {
         ));
         let destination = dir
             .0
-            .join(TableId::parse("K_K").unwrap().relative_path("ggegt"));
+            .join(TableId::parse("K_K").unwrap().relative_path("ggegtb"));
         fs::create_dir_all(destination.parent().unwrap()).unwrap();
         fs::write(&destination, b"existing destination").unwrap();
         assert!(

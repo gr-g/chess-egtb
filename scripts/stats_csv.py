@@ -30,7 +30,7 @@ def count(record, key, path, positive=False):
 
 def validate_root(root):
     root = root.resolve(strict=True)
-    if read_json(root / "format.json") != {"format": "ggegt-v0.13"}:
+    if read_json(root / "format.json") != {"format": "ggegtb-v0.13"}:
         raise ValueError(f"{root}: unsupported tablebase format")
     return root
 
@@ -67,7 +67,7 @@ def table_records(leaf):
 
 def write_csv(root, output, fields, rows):
     output = output.resolve()
-    if output.is_relative_to(root) and output.suffix in (".json", ".ggegt"):
+    if output.is_relative_to(root) and output.suffix in (".json", ".ggegtb"):
         raise ValueError("CSV output must not overwrite tablebase data or JSON metadata")
     with output.open("w", newline="", encoding="utf-8") as destination:
         writer = csv.DictWriter(destination, fieldnames=fields)

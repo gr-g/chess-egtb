@@ -1,13 +1,13 @@
-use chess_egt::{DtcOutcome, EgtError, Tablebase, parse_position, resolve_selectors};
+use chess_egtb::{DtcOutcome, EgtbError, Tablebase, parse_position, resolve_selectors};
 use clap::{Args, Parser, Subcommand};
 use shakmaty::Position;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Parser)]
-#[command(name = "chess-egt", about = "Chess Endgame Tablebase Tool")]
+#[command(name = "chess-egtb", about = "Chess Endgame Tablebase Tool")]
 struct Cli {
     /// Base tablebase directory or object-store URL.
-    #[arg(long, global = true, default_value = "./ggegt")]
+    #[arg(long, global = true, default_value = "./ggegtb")]
     path: PathBuf,
 
     #[command(subcommand)]
@@ -55,7 +55,7 @@ struct InputArgs {
 }
 
 impl InputArgs {
-    fn tablebase(&self, path: &Path) -> Result<Tablebase, EgtError> {
+    fn tablebase(&self, path: &Path) -> Result<Tablebase, EgtbError> {
         let mut tablebase = Tablebase::new(path)?;
         if let Some(input) = &self.input_path {
             tablebase.set_input_path(input)?;
@@ -77,7 +77,7 @@ struct WorkArgs {
 }
 
 impl WorkArgs {
-    fn tablebase(&self, path: &Path) -> Result<Tablebase, EgtError> {
+    fn tablebase(&self, path: &Path) -> Result<Tablebase, EgtbError> {
         let mut tablebase = self.input.tablebase(path)?;
         tablebase.set_threads(usize::from(self.threads));
         Ok(tablebase)
@@ -91,7 +91,7 @@ fn main() {
     }
 }
 
-fn run() -> Result<(), EgtError> {
+fn run() -> Result<(), EgtbError> {
     let Cli { path, command } = Cli::parse();
 
     match command {
@@ -138,7 +138,7 @@ fn format_outcome(outcome: DtcOutcome) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chess_egt::ConversionType;
+    use chess_egtb::ConversionType;
     use clap::error::ErrorKind;
 
     #[test]
@@ -162,16 +162,16 @@ mod tests {
     #[test]
     fn selector_commands_require_at_least_one_selector() {
         for command in ["generate", "verify", "stats", "cache-stats", "list"] {
-            let err = Cli::try_parse_from(["chess-egt", command]).unwrap_err();
+            let err = Cli::try_parse_from(["chess-egtb", command]).unwrap_err();
             assert_eq!(err.kind(), ErrorKind::MissingRequiredArgument);
-            assert!(Cli::try_parse_from(["chess-egt", command, "3/", "4/"]).is_ok());
+            assert!(Cli::try_parse_from(["chess-egtb", command, "3/", "4/"]).is_ok());
         }
     }
 
     #[test]
     fn statistics_commands_reject_input_overlays() {
         for command in ["stats", "cache-stats"] {
-            let err = Cli::try_parse_from(["chess-egt", command, "3/", "--input-path", "other"])
+            let err = Cli::try_parse_from(["chess-egtb", command, "3/", "--input-path", "other"])
                 .unwrap_err();
             assert_eq!(err.kind(), ErrorKind::UnknownArgument);
         }

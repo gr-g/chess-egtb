@@ -8,7 +8,7 @@ pub(crate) use cache::SharedFileCache;
 use frame::Frame;
 
 use crate::TableIndexer;
-use crate::error::{EgtError, EgtResult, try_allocate};
+use crate::error::{EgtbError, EgtbResult, try_allocate};
 use crate::storage::{Location, block_on};
 use crate::table_id::TableId;
 use object_store::{GetOptions, GetRange, ObjectStoreExt, path::Path as ObjectPath};
@@ -38,11 +38,11 @@ impl Source {
         &self.base
     }
 
-    pub(crate) fn open(&self, id: &TableId) -> EgtResult<TableFile> {
+    pub(crate) fn open(&self, id: &TableId) -> EgtbResult<TableFile> {
         if let Some(input) = &self.input {
             match TableFile::open(input, id) {
                 Ok(file) => return Ok(file),
-                Err(EgtError::FileNotFound(_)) => {}
+                Err(EgtbError::FileNotFound(_)) => {}
                 Err(error) => return Err(error),
             }
         }
@@ -68,10 +68,10 @@ impl TableFile {
     /// Opens an existing table without modifying storage. Data is read on demand.
     /// Objects must not be replaced while this reader is in use: reads are not
     /// pinned to an object version.
-    pub(crate) fn open(location: &Location, id: &TableId) -> EgtResult<Self> {
+    pub(crate) fn open(location: &Location, id: &TableId) -> EgtbResult<Self> {
         let egt = TableIndexer::new(id);
         let index_range = egt.index_range();
-        let key = location.key(&id.relative_path("ggegt"));
+        let key = location.key(&id.relative_path("ggegtb"));
         location.validate_format()?;
         let seek_table = Self::read_seek_table(location, &key, index_range, egt.frame_size())?;
         Ok(Self {
@@ -87,7 +87,7 @@ impl TableFile {
         key: &ObjectPath,
         index_range: usize,
         frame_size: usize,
-    ) -> EgtResult<zeekstd::SeekTable> {
+    ) -> EgtbResult<zeekstd::SeekTable> {
         // Our checksum-free seek tables have 8-byte entries and 17 bytes of framing.
         let num_frames = index_range.div_ceil(frame_size);
         let table_size = 17 + 8 * num_frames as u64;
@@ -131,14 +131,14 @@ impl TableFile {
 
     /// Indexes a position already routed to this table. The caller must have
     /// selected this identity and its reflection flag via `TableId::from_position`.
-    pub(crate) fn index(&self, position: &Chess, reflected: bool) -> EgtResult<usize> {
+    pub(crate) fn index(&self, position: &Chess, reflected: bool) -> EgtbResult<usize> {
         let index = if reflected {
             self.egt.reflected_position_to_index(position)
         } else {
             self.egt.position_to_index(position)
         };
         if index >= self.egt.index_range() {
-            return Err(EgtError::IndexOutOfRange {
+            return Err(EgtbError::IndexOutOfRange {
                 index,
                 range: self.egt.index_range(),
             });
@@ -160,8 +160,8 @@ impl TableFile {
         &self,
         frame: usize,
         source: impl Into<Box<dyn std::error::Error + Send + Sync>>,
-    ) -> EgtError {
-        EgtError::InvalidData {
+    ) -> EgtbError {
+        EgtbError::InvalidData {
             location: format!(
                 "{} (frame {frame}, indices {}..{})",
                 self.location.describe(&self.key),
@@ -173,7 +173,7 @@ impl TableFile {
     }
 
     /// Reads all frames using the current Rayon pool, with one decode per worker.
-    pub(crate) fn read_all(&self) -> EgtResult<Vec<Frame>> {
+    pub(crate) fn read_all(&self) -> EgtbResult<Vec<Frame>> {
         (0..self.num_frames())
             .into_par_iter()
             .map(|frame| {
@@ -186,7 +186,7 @@ impl TableFile {
     }
 
     /// Reads and decodes frames in the requested order.
-    fn read_frames(&self, frames: &[usize]) -> EgtResult<Vec<Frame>> {
+    fn read_frames(&self, frames: &[usize]) -> EgtbResult<Vec<Frame>> {
         if frames.is_empty() {
             return Ok(Vec::new());
         }
@@ -196,7 +196,7 @@ impl TableFile {
             .map(|&frame| {
                 Ok(table.frame_start_comp(frame as u32)?..table.frame_end_comp(frame as u32)?)
             })
-            .collect::<EgtResult<Vec<_>>>()?;
+            .collect::<EgtbResult<Vec<_>>>()?;
         // Local get_ranges reports partial EOF differently from get_range.
         let compressed = if let [range] = ranges.as_slice() {
             block_on(self.location.store.get_range(&self.key, range.clone()))
@@ -215,7 +215,7 @@ impl TableFile {
             self.location.error(&self.key, error)
         })?;
         if compressed.len() != frames.len() {
-            return Err(EgtError::Internal("invalid tablebase range count"));
+            return Err(EgtbError::Internal("invalid tablebase range count"));
         }
         frames
             .iter()
@@ -229,7 +229,7 @@ impl TableFile {
                 let encoded_len = table.frame_size_decomp(frame as u32)? as usize;
                 decode_frame(&bytes, self.frame_len(frame), encoded_len).map_err(
                     |error| match error {
-                        EgtError::WorkingMemoryAllocation { .. } => error,
+                        EgtbError::WorkingMemoryAllocation { .. } => error,
                         other => self.invalid_frame(frame, other.into_data_source()),
                     },
                 )
@@ -238,13 +238,13 @@ impl TableFile {
     }
 }
 
-fn decode_frame(compressed: &[u8], len: usize, encoded_len: usize) -> EgtResult<Frame> {
+fn decode_frame(compressed: &[u8], len: usize, encoded_len: usize) -> EgtbResult<Frame> {
     let mut data = try_allocate(encoded_len, "frame decompression buffer")?;
     data.resize(encoded_len, 0);
     // One-shot decoding is bounded by both slices and rejects truncated input.
     // zeekstd's streaming decoder can otherwise loop at premature EOF.
     let decoded = zstd_safe::decompress(&mut data[..], compressed).map_err(|code| {
-        EgtError::invalid_data(
+        EgtbError::invalid_data(
             "tablebase frame",
             format!(
                 "invalid compressed tablebase frame: {}",
@@ -253,7 +253,7 @@ fn decode_frame(compressed: &[u8], len: usize, encoded_len: usize) -> EgtResult<
         )
     })?;
     if decoded != data.len() {
-        return Err(EgtError::invalid_data(
+        return Err(EgtbError::invalid_data(
             "tablebase frame",
             "decompressed tablebase frame has wrong length",
         ));
@@ -265,20 +265,20 @@ fn decode_frame(compressed: &[u8], len: usize, encoded_len: usize) -> EgtResult<
 mod tests {
     use super::*;
     use crate::ConversionType;
-    use crate::egt_file::writer::write_fixture;
     use crate::outcome::PackedOutcome;
     use crate::position::mirror_horizontally;
+    use crate::table_file::writer::write_fixture;
     use shakmaty::Color;
     use shakmaty::fen::Fen;
     use shakmaty::{CastlingMode, Position};
     use std::path::Path;
 
-    fn open_local(base: &Path, name: &str) -> EgtResult<TableFile> {
+    fn open_local(base: &Path, name: &str) -> EgtbResult<TableFile> {
         TableFile::open(&Location::parse(base)?, &TableId::parse(name)?)
     }
 
     fn table_path(base: &Path, name: &str) -> std::path::PathBuf {
-        let path = base.join(TableId::parse(name).unwrap().relative_path("ggegt"));
+        let path = base.join(TableId::parse(name).unwrap().relative_path("ggegtb"));
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         path
     }
@@ -329,7 +329,7 @@ mod tests {
     #[test]
     fn requires_format_and_uses_exact_hierarchical_namespace() {
         let dir = crate::TestDir::new("exact_namespace");
-        let legacy = dir.0.join("KP_K.ggegt");
+        let legacy = dir.0.join("KP_K.ggegtb");
         std::fs::write(&legacy, b"legacy indexing").unwrap();
         assert!(open_local(&dir.0, "KPa_K").is_err());
         assert!(!dir.0.join("format.json").exists());
@@ -476,7 +476,7 @@ mod tests {
         for length in [0, 8, 9, 24] {
             std::fs::write(&path, &valid[valid.len() - length..]).unwrap();
             assert!(matches!(open_local(&dir.0, "K_K"),
-                Err(EgtError::InvalidData { location, .. }) if location.ends_with("/K_K.ggegt")));
+                Err(EgtbError::InvalidData { location, .. }) if location.ends_with("/K_K.ggegtb")));
         }
         // Reject the declared count before zeekstd can allocate from it.
         let mut inflated = valid.clone();
@@ -485,8 +485,8 @@ mod tests {
         std::fs::write(&path, inflated).unwrap();
         assert!(matches!(
             open_local(&dir.0, "K_K"),
-            Err(EgtError::InvalidData { location, source })
-                if location.ends_with("/K_K.ggegt") && source.to_string() == "invalid tablebase frame count"
+            Err(EgtbError::InvalidData { location, source })
+                if location.ends_with("/K_K.ggegtb") && source.to_string() == "invalid tablebase frame count"
         ));
 
         // zeekstd, rather than our loader, validates magic and reserved bits.
@@ -496,7 +496,7 @@ mod tests {
             std::fs::write(&path, corrupt).unwrap();
             assert!(matches!(
                 open_local(&dir.0, "K_K"),
-                Err(EgtError::InvalidData { .. })
+                Err(EgtbError::InvalidData { .. })
             ));
         }
         let mut prefixed = vec![0];
@@ -504,7 +504,7 @@ mod tests {
         std::fs::write(&path, prefixed).unwrap();
         assert!(matches!(
             open_local(&dir.0, "K_K"),
-            Err(EgtError::InvalidData { source, .. })
+            Err(EgtbError::InvalidData { source, .. })
                 if source.to_string() == "invalid tablebase compressed length"
         ));
 
@@ -534,8 +534,8 @@ mod tests {
             corrupt[0] ^= 0xff;
             std::fs::write(&path, corrupt).unwrap();
             assert!(matches!(reader.read_frames(&[0]),
-                Err(EgtError::InvalidData { location, source })
-                    if location.contains(&format!("{name}.ggegt (frame 0, indices 0.."))
+                Err(EgtbError::InvalidData { location, source })
+                    if location.contains(&format!("{name}.ggegtb (frame 0, indices 0.."))
                         && source.to_string().contains("invalid compressed tablebase frame")));
             std::fs::write(&path, valid).unwrap();
             std::fs::OpenOptions::new()
@@ -546,8 +546,8 @@ mod tests {
                 .unwrap();
             let frames: Vec<_> = (0..reader.num_frames()).collect();
             assert!(matches!(reader.read_frames(&frames),
-                Err(EgtError::InvalidData { location, .. })
-                    if location.contains(&format!("{name}.ggegt (frame {last}, indices "))));
+                Err(EgtbError::InvalidData { location, .. })
+                    if location.contains(&format!("{name}.ggegtb (frame {last}, indices "))));
         }
     }
 }

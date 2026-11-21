@@ -1,7 +1,7 @@
 use super::*;
-use crate::egt_file::TableFile;
 use crate::outcome::PackedOutcome;
 use crate::storage::Location;
+use crate::table_file::TableFile;
 use shakmaty::{Chess, Color, Position};
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -22,7 +22,7 @@ fn write_artifact(root: &Path, name: &str, extension: &str, bytes: &[u8]) {
     std::fs::write(path, bytes).unwrap();
 }
 
-fn aggregate(tables: &[EgtStats]) -> AggregateStats {
+fn aggregate(tables: &[TableStats]) -> AggregateStats {
     let mut total = AggregateStats::default();
     for stats in tables {
         total.add(stats);
@@ -60,12 +60,12 @@ fn verification_distinguishes_exact_tables_from_material_families() {
         .iter()
         .filter(|id| !["KPa_K", "K_KPa"].contains(&id.name().as_str()))
     {
-        std::fs::remove_file(dir.0.join(id.relative_path("ggegt"))).unwrap();
+        std::fs::remove_file(dir.0.join(id.relative_path("ggegtb"))).unwrap();
     }
     tablebase.verify(&["KPa_K"]).unwrap();
     assert!(matches!(
         tablebase.verify(&["KP_K"]),
-        Err(EgtError::FileNotFound(_))
+        Err(EgtbError::FileNotFound(_))
     ));
 }
 
@@ -143,7 +143,7 @@ fn probing_rejects_castling_rights_before_table_lookup() {
             assert!(
                 matches!(
                     prober.probe(&position),
-                    Err(EgtError::UnsupportedPosition(_))
+                    Err(EgtbError::UnsupportedPosition(_))
                 ),
                 "{fen}"
             );
@@ -155,7 +155,7 @@ fn probing_rejects_castling_rights_before_table_lookup() {
 fn generation_invalidates_cached_probe_data() {
     let dir = TestDir::new("generation_invalidates_cache");
     let win = DtcOutcome::Win(ConversionType::Checkmate, 3);
-    crate::egt_file::writer::write_fixture(&dir.0, "K_K", |_| {
+    crate::table_file::writer::write_fixture(&dir.0, "K_K", |_| {
         PackedOutcome::new_win(ConversionType::Checkmate, 3)
     });
     let mut tablebase = test_generator(&dir.0);
@@ -175,7 +175,7 @@ fn generator_publishes_finalized_stats_with_shadowed_outputs() {
     Location::parse(&input.0).unwrap().ensure_format().unwrap();
     // Output identities in the input overlay must not be read during generation.
     for name in ["KQ_K", "K_KQ"] {
-        write_artifact(&input.0, name, "ggegt", &[0xff; 64]);
+        write_artifact(&input.0, name, "ggegtb", &[0xff; 64]);
     }
     let mut generator = Tablebase::new(&output.0).unwrap();
     generator.set_input_path(&input.0).unwrap();
@@ -183,17 +183,17 @@ fn generator_publishes_finalized_stats_with_shadowed_outputs() {
     generator.generate(&["K_K"]).unwrap();
     let tables = generator.generate(&["KQ_K"]).unwrap();
     assert_eq!(tables.len(), 2);
-    assert!(table_path(&output.0, "K_K", "ggegt").exists());
+    assert!(table_path(&output.0, "K_K", "ggegtb").exists());
     for stats in &tables {
-        let data = std::fs::read(table_path(&output.0, &stats.tablename, "ggegt")).unwrap();
+        let data = std::fs::read(table_path(&output.0, &stats.tablename, "ggegtb")).unwrap();
         assert_eq!(stats.totals.bytes, data.len() as u64);
         assert_eq!(stats.sha256, hex::encode(Sha256::digest(&data)));
         let json = std::fs::read(table_path(&output.0, &stats.tablename, "json")).unwrap();
-        assert_eq!(serde_json::from_slice::<EgtStats>(&json).unwrap(), *stats);
+        assert_eq!(serde_json::from_slice::<TableStats>(&json).unwrap(), *stats);
     }
     for name in ["KQ_K", "K_KQ"] {
         let error = generator.probe(&position_for(name)).unwrap_err();
-        assert!(!matches!(error, EgtError::FileNotFound(_)));
+        assert!(!matches!(error, EgtbError::FileNotFound(_)));
     }
     assert_eq!(
         generator.stats(&["KQ_K", "K_KQ"]).unwrap(),
@@ -207,7 +207,7 @@ fn read_only_output_is_rejected_before_generation() {
     for threads in [1, 4] {
         generator.set_threads(threads);
         assert!(matches!(generator.generate(&["K_K"]),
-            Err(EgtError::InvalidStorageLocation(message)) if message.contains("read-only")));
+            Err(EgtbError::InvalidStorageLocation(message)) if message.contains("read-only")));
     }
 }
 
@@ -225,7 +225,7 @@ fn in_memory_prefix_reuses_backend_for_dependencies_and_verification() {
         tablebase.probe(&position_for("K_K")).unwrap(),
         DtcOutcome::Draw
     );
-    assert!(object_exists(&location, "2/1v1/op0/0pawns/K_K.ggegt"));
+    assert!(object_exists(&location, "2/1v1/op0/0pawns/K_K.ggegtb"));
     assert_eq!(
         tablebase.stats(&["KQ_K", "K_KQ"]).unwrap(),
         aggregate(&tables)
@@ -245,12 +245,12 @@ fn input_lookup_falls_back_only_for_missing_files() {
         prober.probe(&position_for("K_K"))
     };
     assert!(probe().is_ok());
-    write_artifact(&input.0, "K_K", "ggegt", &[0xff; 64]);
+    write_artifact(&input.0, "K_K", "ggegtb", &[0xff; 64]);
     assert!(
-        matches!(probe(), Err(EgtError::InvalidData { location, .. })
-        if location.contains("input_fallback_input") && location.ends_with("/K_K.ggegt"))
+        matches!(probe(), Err(EgtbError::InvalidData { location, .. })
+        if location.contains("input_fallback_input") && location.ends_with("/K_K.ggegtb"))
     );
-    std::fs::remove_file(table_path(&input.0, "K_K", "ggegt")).unwrap();
+    std::fs::remove_file(table_path(&input.0, "K_K", "ggegtb")).unwrap();
     assert!(probe().is_ok());
 }
 
@@ -260,7 +260,7 @@ fn changing_input_path_invalidates_warmed_lookup_precedence() {
     let input = TestDir::new("changed_input_input");
     test_generator(&output.0).generate(&["K_K"]).unwrap();
     Location::parse(&input.0).unwrap().ensure_format().unwrap();
-    write_artifact(&input.0, "K_K", "ggegt", &[0xff; 64]);
+    write_artifact(&input.0, "K_K", "ggegtb", &[0xff; 64]);
     let position = position_for("K_K");
     let mut prober = Tablebase::new(&output.0).unwrap();
     assert_eq!(prober.probe(&position).unwrap(), DtcOutcome::Draw);

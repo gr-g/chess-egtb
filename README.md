@@ -1,5 +1,5 @@
-# gg-EGT: A Chess Endgame Tablebase
-gg-EGT is an experimental [chess endgame tablebase](https://en.wikipedia.org/wiki/Endgame_tablebase)
+# gg-EGTB: A Chess Endgame Tablebase
+gg-EGTB is an experimental [chess endgame tablebase](https://en.wikipedia.org/wiki/Endgame_tablebase)
 (EGT) written in Rust.
 
 ## Current status
@@ -44,17 +44,17 @@ cargo run --release -- generate 2/ 3/
 cargo run --release -- probe '8/8/8/8/8/2K5/4Q3/7k w - -'
 ```
 
-Tables are stored in `./ggegt` by default. When generating new tables, capture
+Tables are stored in `./ggegtb` by default. When generating new tables, capture
 and promotion dependencies must already exist or be explicitly selected.
 
 ### Additional commands
 
 ```sh
 # Generate all 4-piece tables (assuming dependencies already exist), using 4 threads.
-cargo run --release -- generate 4/ --path ./ggegt --threads 4
+cargo run --release -- generate 4/ --path ./ggegtb --threads 4
 
 # Generate selected tables locally, using existing dependencies from an S3 bucket.
-cargo run --release -- generate KQ_KR KP_K --path ./ggegt --input-path s3://my-ggegt-bucket/
+cargo run --release -- generate KQ_KR KP_K --path ./ggegtb --input-path s3://my-ggegtb-bucket/
 
 # Verify the internal consistency of existing tables.
 cargo run --release -- verify KQ_KR KR_KQ
@@ -112,8 +112,8 @@ python3 scripts/export_summary_stats.py ROOT summary_stats.csv
 Run an API server with tables read from an S3 bucket:
 
 ```sh
-cargo run --release --bin chess-egt-server -- \
-  --path s3://my-ggegt-bucket/ --cache-size 1GiB --bind 127.0.0.1:44348
+cargo run --release --bin chess-egtb-server -- \
+  --path s3://my-ggegtb-bucket/ --cache-size 1GiB --bind 127.0.0.1:44348
 
 # Get statistics on 3-piece endgames
 curl --get http://localhost:44348/stats?tables=3
@@ -207,7 +207,7 @@ main building blocks:
   [`src/generator/solver.rs`](src/generator/solver.rs) propagates known outcomes
   backward to predecessor positions.
 - **Storage and memory layer**: `TableFile` reads compressed tables,
-  `EgtFileWriter` publishes them, `BatchReader` loads tables eagerly for batch
+  `TableFileWriter` publishes them, `BatchReader` loads tables eagerly for batch
   jobs, and `SharedFileCache` serves on-demand probes. Per-table statistics
   and hierarchy summaries are stored separately as JSON.
 
@@ -309,21 +309,22 @@ project).
 Each table is stored as one compressed file in a hierarchical directory
 structure. Table paths have this form:
 ```text
-<root>/<n>/<max>v<min>/op<K>/<N>pawns/<tablename>.ggegt
+<root>/<n>/<max>v<min>/op<K>/<N>pawns/<tablename>.ggegtb
 ```
 
 In the path, `n` counts all pieces including kings, `max`/`min` are the two
 side piece counts in descending order, `K` counts mutually opposing pawn pairs
 (once per pair), and `N` counts pawns. For example:
 ```text
-<root>/4/2v2/op0/1pawns/KQ_KPc.ggegt
+<root>/4/2v2/op0/1pawns/KQ_KPc.ggegtb
 ```
 
 A simple JSON file named `format.json` at the root contains a format
-descriptor. Currently this is: `{"format":"ggegt-v0.13"}`. Readers and
-generators reject roots with older descriptors. [`Location`](src/storage.rs)
-handles the storage root and format descriptor; `TableId::relative_path` builds
-table paths using [`Hierarchy`](src/selection.rs).
+descriptor. Currently this is: `{"format":"ggegtb-v0.13"}`. Readers and
+generators reject roots with older descriptors; existing roots and table files
+are not renamed automatically. [`Location`](src/storage.rs) handles the storage
+root and format descriptor; `TableId::relative_path` builds table paths using
+[`Hierarchy`](src/selection.rs).
 
 The hierarchical layout described above is designed to expose useful facts
 about the dependencies between tables and facilitate grouping tables that can
@@ -356,7 +357,7 @@ structure looks like this:
 
 ```text
 <root>/format.json
-<root>/<n>/<max>v<min>/op<K>/<N>pawns/<tablename>.ggegt
+<root>/<n>/<max>v<min>/op<K>/<N>pawns/<tablename>.ggegtb
 <root>/<n>/<max>v<min>/op<K>/<N>pawns/<tablename>.json
 <root>/<n>/<max>v<min>/op<K>/<N>pawns/stats.json
 <root>/<n>/<max>v<min>/op<K>/stats.json
@@ -365,7 +366,7 @@ structure looks like this:
 
 The `stats` command reports statistics for individual tables
 (`<tablename>.json`) or groups of tables (`stats.json`).
-[`EgtStats` and `AggregateStats`](src/stats.rs) define the per-table and
+[`TableStats` and `AggregateStats`](src/stats.rs) define the per-table and
 aggregate records. [`StatsAccumulator`](src/generator/finalization/stats.rs)
 collects per-table counts during finalization, while the
 [`stats::cache`](src/stats/cache.rs) module reads and rebuilds hierarchy summaries.
@@ -564,7 +565,7 @@ positions resolved at the target ply for the given resolution type.
 #### File format and compression
 Each canonical table is one seekable Zstd object (via `zeekstd`).
 
-The format of the compressed tables (`.ggegt`) has the following characteristics:
+The format of the compressed tables (`.ggegtb`) has the following characteristics:
 - The uncompressed data is split into frames of
   `2 * (65 - n) * (66 - n) * (67 - n)` positions, where `n` counts all pieces,
   including pawns and kings. Frames are compressed independently, allowing
@@ -572,9 +573,9 @@ The format of the compressed tables (`.ggegt`) has the following characteristics
 - A seek table (without checksum) of `17 + 8 * num_frames` bytes is appended
   in the footer frame. The footer frame count is checked before parsing to
   bound allocation; compressed and decompressed lengths are also validated.
-- [`TableFile`](src/egt_file.rs) holds the seek table and reads and decompresses
+- [`TableFile`](src/table_file.rs) holds the seek table and reads and decompresses
   frames by byte range.
-- Each [`Frame`](src/egt_file/frame.rs) of _N_ positions has its own palette
+- Each [`Frame`](src/table_file/frame.rs) of _N_ positions has its own palette
   of _d_ distinct raw `PackedOutcome` values, ordered by descending frequency,
   with ties broken by ascending raw value. Its uncompressed layout is:
   1. The palette count _d_ as a little-endian `u16` (1–65,535).
@@ -589,7 +590,7 @@ The format of the compressed tables (`.ggegt`) has the following characteristics
   counts or boundaries.
 
 Frames are compressed in parallel and the results are collected.
-The [`EgtFileWriter`](src/egt_file/writer.rs) method `publish` consumes the
+The [`TableFileWriter`](src/table_file/writer.rs) method `publish` consumes the
 writer and validates the collected frames before streaming them in order and
 appending one seek table through the `object_store` buffered writer.
 
@@ -601,9 +602,9 @@ failure is reported as an error. Finalization processes one table at a time
 in parallel frame batches. Batches use the same Rayon pool as generation,
 with at most one encoder per configured thread.
 
-[`BatchReader`](src/egt_file/batch.rs) eagerly loads the decompressed tables
+[`BatchReader`](src/table_file/batch.rs) eagerly loads the decompressed tables
 needed for each generation or verification job.
-[`SharedFileCache`](src/egt_file/cache.rs) instead retains `TableFile` metadata
+[`SharedFileCache`](src/table_file/cache.rs) instead retains `TableFile` metadata
 and loads frames on demand for probes. It evicts the least recently used
 frames to stay within the configured frame budget (the server's `--cache-size`
 option).

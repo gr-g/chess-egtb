@@ -6,7 +6,7 @@ use shakmaty::Chess;
 use super::{Frame, Source, TableFile};
 use crate::outcome::PackedOutcome;
 use crate::table_id::TableId;
-use crate::{DtcOutcome, EgtError, EgtResult, TableIndexer};
+use crate::{DtcOutcome, EgtbError, EgtbResult, TableIndexer};
 
 /// Job-scoped tables loaded before workers borrow them immutably.
 /// All enumerated dependencies must exist and their decompressed data must fit
@@ -18,12 +18,12 @@ pub(crate) struct BatchReader {
 
 impl BatchReader {
     /// Opens all metadata first, so missing dependencies fail before bulk loading.
-    pub(crate) fn open(source: &Source, ids: &[TableId]) -> EgtResult<Self> {
+    pub(crate) fn open(source: &Source, ids: &[TableId]) -> EgtbResult<Self> {
         let mut files = HashMap::new();
         for &id in ids {
             if let Entry::Vacant(entry) = files.entry(id) {
                 let file = source.open(&id).map_err(|source| match source {
-                    EgtError::FileNotFound(_) => EgtError::DependencyUnavailable {
+                    EgtbError::FileNotFound(_) => EgtbError::DependencyUnavailable {
                         dependency: id.to_string(),
                         source: Box::new(source),
                     },
@@ -38,7 +38,7 @@ impl BatchReader {
                 let frames = file.read_all()?;
                 Ok((id, (file, frames)))
             })
-            .collect::<EgtResult<_>>()?;
+            .collect::<EgtbResult<_>>()?;
         Ok(Self { files })
     }
 
@@ -67,16 +67,16 @@ impl BatchReader {
         self.table(id).0.egt()
     }
 
-    pub(crate) fn probe(&self, position: &Chess) -> EgtResult<PackedOutcome> {
+    pub(crate) fn probe(&self, position: &Chess) -> EgtbResult<PackedOutcome> {
         self.probe_indexed(position).map(|(_, outcome)| outcome)
     }
 
-    pub(crate) fn probe_outcome(&self, position: &Chess) -> EgtResult<DtcOutcome> {
+    pub(crate) fn probe_outcome(&self, position: &Chess) -> EgtbResult<DtcOutcome> {
         let (index, outcome) = self.probe_indexed(position)?;
-        DtcOutcome::try_from(outcome).map_err(|value| EgtError::CorruptedOutcome { value, index })
+        DtcOutcome::try_from(outcome).map_err(|value| EgtbError::CorruptedOutcome { value, index })
     }
 
-    fn probe_indexed(&self, position: &Chess) -> EgtResult<(usize, PackedOutcome)> {
+    fn probe_indexed(&self, position: &Chess) -> EgtbResult<(usize, PackedOutcome)> {
         let (id, reflected) = TableId::from_position(position)?;
         let (file, frames) = self.table(&id);
         let index = file.index(position, reflected)?;
@@ -89,11 +89,11 @@ impl BatchReader {
         id: &TableId,
         start: usize,
         end: usize,
-    ) -> EgtResult<Vec<PackedOutcome>> {
+    ) -> EgtbResult<Vec<PackedOutcome>> {
         let (file, frames) = self.table(id);
         let range = file.egt().index_range();
         if start > end || end > range {
-            return Err(EgtError::IndexOutOfRange { index: end, range });
+            return Err(EgtbError::IndexOutOfRange { index: end, range });
         }
         if start == end {
             return Ok(Vec::new());
@@ -107,8 +107,8 @@ impl BatchReader {
 mod tests {
     use super::*;
     use crate::ConversionType;
-    use crate::egt_file::writer::write_fixture;
     use crate::storage::Location;
+    use crate::table_file::writer::write_fixture;
     use shakmaty::{CastlingMode, fen::Fen};
 
     #[test]

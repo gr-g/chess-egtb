@@ -19,7 +19,7 @@ use std::fmt;
 
 use shakmaty::{ByRole, File, Role};
 
-use crate::error::{EgtError, EgtResult};
+use crate::error::{EgtbError, EgtbResult};
 use crate::table_id::{
     MAX_PIECES, NONPAWN_ROLES, PawnKey, TableId, compare_file_reflection, uppercase_role,
 };
@@ -33,7 +33,7 @@ pub(crate) struct Hierarchy {
 }
 
 impl Hierarchy {
-    pub(crate) fn parse(selector: &str) -> EgtResult<Self> {
+    pub(crate) fn parse(selector: &str) -> EgtbResult<Self> {
         let invalid = |reason| invalid_name(selector, reason);
         let text = selector.strip_suffix('/').unwrap_or(selector);
         if text.is_empty() {
@@ -142,7 +142,7 @@ impl Hierarchy {
         .flatten()
     }
 
-    pub(crate) fn resolve(&self) -> EgtResult<Vec<TableId>> {
+    pub(crate) fn resolve(&self) -> EgtbResult<Vec<TableId>> {
         TableSelector {
             source: self.to_string(),
             target: Target::Hierarchy(*self),
@@ -176,7 +176,7 @@ struct Material {
 }
 
 impl Material {
-    fn parse(name: &str) -> EgtResult<Self> {
+    fn parse(name: &str) -> EgtbResult<Self> {
         let invalid = |reason| invalid_name(name, reason);
         let (stm, sntm) = name
             .split_once('_')
@@ -265,7 +265,7 @@ pub(crate) struct TableSelector {
 }
 
 impl TableSelector {
-    pub fn parse(selector: &str) -> EgtResult<Self> {
+    pub fn parse(selector: &str) -> EgtbResult<Self> {
         let target = if selector.contains('_') {
             if selector.contains('/') {
                 return Err(invalid_name(
@@ -289,7 +289,7 @@ impl TableSelector {
 
     /// Returns identities in dependency order (piece count, then pawn count),
     /// breaking ties by table name in KQRBNP order.
-    pub fn resolve(&self) -> EgtResult<Vec<TableId>> {
+    pub fn resolve(&self) -> EgtbResult<Vec<TableId>> {
         let tables = match &self.target {
             Target::Exact(table) => vec![*table],
             Target::Material(material) => material.tables(None),
@@ -312,11 +312,11 @@ impl TableSelector {
     }
 }
 
-fn parse_selectors(selectors: &[&str]) -> EgtResult<Vec<TableSelector>> {
+fn parse_selectors(selectors: &[&str]) -> EgtbResult<Vec<TableSelector>> {
     let parsed = selectors
         .iter()
         .map(|selector| TableSelector::parse(selector))
-        .collect::<EgtResult<Vec<_>>>()?;
+        .collect::<EgtbResult<Vec<_>>>()?;
     if let Some(first) = parsed.first() {
         for selector in &parsed[1..] {
             if matches!(first.target, Target::Hierarchy(_))
@@ -334,7 +334,7 @@ fn parse_selectors(selectors: &[&str]) -> EgtResult<Vec<TableSelector>> {
 
 /// Union of hierarchy prefixes or exact/material names, deduplicated and sorted
 /// by pieces, then pawns, then name in KQRBNP order, grouping opposition variants.
-pub fn resolve_selectors(selectors: &[&str]) -> EgtResult<Vec<TableId>> {
+pub fn resolve_selectors(selectors: &[&str]) -> EgtbResult<Vec<TableId>> {
     let mut tables = BTreeSet::new();
     for selector in parse_selectors(selectors)? {
         tables.extend(selector.resolve()?);
@@ -345,7 +345,7 @@ pub fn resolve_selectors(selectors: &[&str]) -> EgtResult<Vec<TableId>> {
 /// Validates a prefix-only or name-only selection without enumerating tables.
 /// Hierarchies are sorted and omit duplicates and covered descendants.
 /// Empty input returns Some(empty); material and exact selections return None.
-pub(crate) fn hierarchy_prefixes(selectors: &[&str]) -> EgtResult<Option<Vec<Hierarchy>>> {
+pub(crate) fn hierarchy_prefixes(selectors: &[&str]) -> EgtbResult<Option<Vec<Hierarchy>>> {
     let parsed = parse_selectors(selectors)?;
     if parsed
         .first()
@@ -417,8 +417,8 @@ fn decimal(text: &str) -> Option<usize> {
     text.parse().ok()
 }
 
-fn invalid_name(name: &str, reason: &'static str) -> EgtError {
-    EgtError::InvalidEndgameName {
+fn invalid_name(name: &str, reason: &'static str) -> EgtbError {
+    EgtbError::InvalidEndgameName {
         name: name.to_owned(),
         reason,
     }
@@ -543,10 +543,10 @@ mod tests {
         assert!(opposed.iter().all(|t| t.opposing_pairs() == 1));
         assert_eq!(resolve("4/2v2/op0/2pawns").len(), 32);
         for table in resolve("4") {
-            let path = table.relative_path("ggegt");
+            let path = table.relative_path("ggegtb");
             let prefix = path.rsplit_once('/').unwrap().0;
             assert!(resolve(prefix).contains(&table), "{path}");
-            let exact = path.strip_suffix(".ggegt").unwrap();
+            let exact = path.strip_suffix(".ggegtb").unwrap();
             assert!(TableSelector::parse(exact).is_err());
             assert_eq!(resolve(&table.name()), vec![table]);
         }
