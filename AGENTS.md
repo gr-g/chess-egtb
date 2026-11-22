@@ -30,6 +30,11 @@ Compressed size: 12.19 MiB (0.82 bits/pos). Lowest compression: KB_KQ (3.42 bits
 Generated 1496 tables: 25880730473 unique positions in 05h:46m:17s (1.18 μs/index on 2 threads).
 Compressed size: 3289.07 MiB (1.07 bits/pos). Lowest compression: KBB_KQ (3.80 bits/pos).
 ```
+```
+== All 5 pieces, 32 threads (AMD EPYC Milan) ==
+Generated 1496 tables: 25880730473 unique positions in 00h:30m:45s (1.67 μs/index on 32 threads).
+Compressed size: 3289.07 MiB (1.07 bits/pos). Lowest compression: KBB_KQ (3.80 bits/pos).
+```
 
 ## TODO
 - Visibility and public interface.

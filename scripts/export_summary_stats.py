@@ -16,8 +16,8 @@ from stats_csv import (
 # Reference values from scaling.md: measured up to REFERENCE_PIECES, assumed above.
 REFERENCE_PIECES = 5
 # Allocated core time per index position, as reported by generation.
-CORE_US_PER_INDEX = 1.22
-CORE_US_PER_INDEX_6 = 1.30
+CORE_US_PER_INDEX = 1.67
+CORE_US_PER_INDEX_6 = 1.70
 
 # Unlike the actual table CSV compression, these rates use INDEX positions.
 COMPRESSION_BITS_PER_INDEX = 0.78

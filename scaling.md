@@ -80,7 +80,7 @@ table-pair plus a comparable amount of memory to store dependencies.
 ## 3. Compute requirements
 
 The following measurements are based on runs executed on an AMD Ryzen 7 5700G,
-with 2 threads and without including verification.
+with 2 threads and without verification.
 
 | Pieces | Index positions | Elapsed time (on 2 threads) | Allocated core-hours | μs per index position |
 |---|---:|---:|---:|---:|
@@ -91,18 +91,25 @@ with 2 threads and without including verification.
 From four to five pieces, index positions grow 226× and generation time grows
 by a very similar amount.
 
-Assuming a value of `1.30` μs per index position for larger sets, and assuming a
+Measurements were also taken on a cloud server with 32 vCPUs (AMD EPYC Milan,
+3.2 GHZ).
+
+| Pieces | Index positions | Elapsed time (on 32 threads) | Allocated core-hours | μs per index position |
+|---|---:|---:|---:|---:|
+| 5 | 35,268,305,340 | 30 m 45 s | 16.40 | 1.67 |
+
+Assuming a value of `1.70` μs per index position for larger sets, and assuming a
 cost for cloud compute resources in the range $0.03-$0.05 per core-hour (as of
 end-2026), we have the following estimates.
 
 | Pieces | μs per index position | Allocated core-hours | Cost |
 |---|---:|---:|---:|
-| 6 (estimated) | 1.30 | 2,025 | $60-$102 |
-| 7 (estimated) | 1.30 | 245,319 | $7,350-$12,270 |
+| 6 (estimated) | 1.70 | 2,647 | $80-$135 |
+| 7 (estimated) | 1.70 | 320,801 | $9,600-$16,000 |
 
 In terms of **time**, these estimates imply generation of all 6-piece tables in
-approximately 3 days on a single server with 32 vCPUs, and generation of all
-7-piece tables in approximately 2 months on a single server with 192 vCPUs.
+approximately 3-4 days on a single server with 32 vCPUs, and generation of all
+7-piece tables in approximately 2-3 months on a single server with 192 vCPUs.
 
 ## 4. Storage requirements
 

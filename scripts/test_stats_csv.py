@@ -119,12 +119,12 @@ class StatsCsvTests(unittest.TestCase):
         ])
         row = leaf_stats.leaf_row(self.root, leaf)
         self.assertEqual(row["estimated_total_core_hours"],
-                         f"{2 * GIB * 1.22 / 3_600_000_000:.6f}")
+                         f"{2 * GIB * 1.67 / 3_600_000_000:.6f}")
         self.assertNotEqual(row["estimated_total_core_hours"],
-                            f"{GIB * 1.22 / 3_600_000_000:.6f}")
+                            f"{GIB * 1.67 / 3_600_000_000:.6f}")
 
     def test_piece_count_scales_index_compression_and_compute_model(self):
-        for pieces, bits, core_us in ((5, 0.78, 1.22), (6, 0.90, 1.30), (7, 1.00, 1.30)):
+        for pieces, bits, core_us in ((5, 0.78, 1.67), (6, 0.90, 1.70), (7, 1.00, 1.70)):
             with self.subTest(pieces=pieces):
                 leaf, _ = self.make_leaf(
                     [self.placeholder(index_range=8 * GIB)],
