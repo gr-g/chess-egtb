@@ -7,7 +7,7 @@ gg-EGTB is an experimental [chess endgame tablebase](https://en.wikipedia.org/wi
 All tables with up to five pieces have been generated and verified. The design
 supports positions with up to eight pieces.
 
-The library API, command-line interface, and file format are not yet finalized.
+An experimental API server is running at [chess-egtb-production.up.railway.app](https://chess-egtb-production.up.railway.app/query?fen=r5k1/8/4P3/4K3/5R2/8/8/8_w_-_-).
 
 ## Goals
 - Provide a tablebase with depth-to-conversion (DTC) outcomes including the
