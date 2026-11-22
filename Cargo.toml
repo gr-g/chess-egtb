@@ -2,6 +2,7 @@
 name = "chess-egtb"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.97"
 default-run = "chess-egtb"
 
 [dependencies]
