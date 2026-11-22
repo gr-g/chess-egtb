@@ -18,7 +18,7 @@ use url::Url;
 
 use crate::{EgtbError, EgtbResult};
 
-const TABLEBASE_FORMAT: &str = "ggegtb-v0.13";
+const TABLEBASE_FORMAT: &str = "ggegtb-v1";
 
 /// Root metadata is immutable and independent of optional per-table statistics.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]

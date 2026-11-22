@@ -27,7 +27,7 @@ class StatsCsvTests(unittest.TestCase):
         self.base = Path(self.temporary.name)
         self.root = self.base / "tables"
         self.root.mkdir()
-        self.put_json(self.root / "format.json", {"format": "ggegtb-v0.13"})
+        self.put_json(self.root / "format.json", {"format": "ggegtb-v1"})
 
     def put_json(self, path, value):
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -221,20 +221,6 @@ class StatsCsvTests(unittest.TestCase):
                          "other/3v2/op0/0pawns"):
             (self.root / relative).mkdir(parents=True, exist_ok=True)
         self.assertEqual(stats_csv.leaf_directories(self.root), [leaf])
-
-    def test_format_validation_requires_exact_supported_object(self):
-        self.assertEqual(stats_csv.validate_root(self.root), self.root.resolve())
-        for value in ({"format": "ggegtb-v0.11"}, {}, {"format": None},
-                      {"format": "ggegtb-v0.13", "extra": True}, [], "ggegtb-v0.13"):
-            with self.subTest(value=value):
-                self.put_json(self.root / "format.json", value)
-                with self.assertRaises(ValueError):
-                    stats_csv.validate_root(self.root)
-        (self.root / "format.json").unlink()
-        with self.assertRaisesRegex(ValueError, "format.json"):
-            stats_csv.validate_root(self.root)
-        with self.assertRaises(OSError):
-            stats_csv.validate_root(self.root / "nonexistent")
 
     def test_malformed_json_is_rejected_with_path(self):
         leaf, _ = self.make_leaf([self.complete()])

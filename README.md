@@ -320,11 +320,9 @@ side piece counts in descending order, `K` counts mutually opposing pawn pairs
 ```
 
 A simple JSON file named `format.json` at the root contains a format
-descriptor. Currently this is: `{"format":"ggegtb-v0.13"}`. Readers and
-generators reject roots with older descriptors; existing roots and table files
-are not renamed automatically. [`Location`](src/storage.rs) handles the storage
-root and format descriptor; `TableId::relative_path` builds table paths using
-[`Hierarchy`](src/selection.rs).
+descriptor. Readers and generators reject roots with older descriptors.
+[`Location`](src/storage.rs) handles the storage root and format descriptor;
+`TableId::relative_path` builds table paths using [`Hierarchy`](src/selection.rs).
 
 The hierarchical layout described above is designed to expose useful facts
 about the dependencies between tables and facilitate grouping tables that can
