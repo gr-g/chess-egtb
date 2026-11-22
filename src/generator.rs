@@ -2,12 +2,16 @@ mod finalization;
 mod solver;
 mod unmoves;
 
-use std::time::Instant;
+use std::time::{Instant, SystemTime};
+
+use object_store::{ObjectStoreExt, PutMode, PutOptions, path::Path as ObjectPath};
 
 use self::solver::{TableState, solve_pair};
 use crate::report::{generation_summary, print_table_stats};
 use crate::selection::{TablePair, plan_pairs};
+use crate::storage::{Location, block_on};
 use crate::table_file::{BatchReader, Source};
+use crate::table_id::TableId;
 use crate::{AggregateStats, EgtbResult, TableIndexer, TableStats, resolve_selectors};
 
 #[derive(Default, Clone, Copy)]
@@ -16,7 +20,7 @@ struct WinLoss<T> {
     loss: T,
 }
 
-/// Generates the selected tables and their twins in the base location.
+/// Generates missing selected tables and their twins in the base location.
 pub(crate) fn generate(
     source: &Source,
     pool: &rayon::ThreadPool,
@@ -24,19 +28,55 @@ pub(crate) fn generate(
 ) -> EgtbResult<Vec<TableStats>> {
     let start = Instant::now();
     let pairs = plan_pairs(resolve_selectors(selectors)?);
-    source.base().ensure_format()?;
+    let base = source.base();
+    base.ensure_format()?;
     let mut results = Vec::new();
+    let (mut complete, mut busy) = (0, 0);
     println!(
-        "Generating {} twin-pair jobs using {} threads.",
+        "Considering {} twin-pair jobs using {} threads.",
         pairs.len(),
         pool.current_num_threads()
     );
-    pool.install(|| -> EgtbResult<()> {
-        for pair in pairs {
-            results.extend(generate_pair(source, &pair)?);
+    for pair in pairs {
+        if missing_outputs(base, &pair)?.is_empty() {
+            complete += 1;
+            continue;
         }
-        Ok(())
-    })?;
+        let lock = pair_lock_key(base, &pair);
+        if !try_lock(base, &lock)? {
+            println!(
+                "{}: skipped busy pair ({})",
+                pair.table,
+                base.describe(&lock)
+            );
+            busy += 1;
+            continue;
+        }
+        // A previous owner may have finished between the first check and lock acquisition.
+        let generated = missing_outputs(base, &pair).and_then(|missing| {
+            if missing.is_empty() {
+                Ok(Vec::new())
+            } else {
+                pool.install(|| generate_pair(source, &pair, &missing))
+            }
+        });
+        let unlock = block_on(base.store.delete(&lock)).map_err(|error| base.error(&lock, error));
+        let generated = match generated {
+            Ok(stats) => {
+                unlock?;
+                stats
+            }
+            Err(error) => {
+                if let Err(unlock) = unlock {
+                    eprintln!("{}: could not release pair lock: {unlock}", pair.table);
+                }
+                return Err(error);
+            }
+        };
+        complete += usize::from(generated.is_empty());
+        results.extend(generated);
+    }
+    println!("Skipped twin-pair jobs: {complete} complete, {busy} busy.");
     let mut total = AggregateStats::default();
     for stats in &results {
         total.add(stats);
@@ -63,12 +103,54 @@ pub(crate) fn generate(
     Ok(results)
 }
 
-/// Generates and publishes one table and its twin in the caller's Rayon pool.
-/// A self-twin is published once. Statistics are returned in table/twin order.
-fn generate_pair(source: &Source, pair: &TablePair) -> EgtbResult<Vec<TableStats>> {
+fn pair_ids(pair: &TablePair) -> impl Iterator<Item = &TableId> {
+    std::iter::once(&pair.table).chain(pair.twin.iter())
+}
+
+fn missing_outputs(base: &Location, pair: &TablePair) -> EgtbResult<Vec<TableId>> {
+    let mut missing = Vec::new();
+    for id in pair_ids(pair) {
+        let key = base.key(&id.relative_path("ggegtb"));
+        match block_on(base.store.head(&key)) {
+            Ok(_) => {}
+            Err(object_store::Error::NotFound { .. }) => missing.push(*id),
+            Err(error) => return Err(base.error(&key, error)),
+        }
+    }
+    Ok(missing)
+}
+
+fn pair_lock_key(base: &Location, pair: &TablePair) -> ObjectPath {
+    base.key(&pair.table.relative_path("lock"))
+}
+
+fn try_lock(base: &Location, key: &ObjectPath) -> EgtbResult<bool> {
+    let started = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default();
+    let payload = serde_json::to_vec(&serde_json::json!({
+        "pid": std::process::id(),
+        "started_unix_seconds": started.as_secs(),
+    }))?;
+    let options = PutOptions {
+        mode: PutMode::Create,
+        ..Default::default()
+    };
+    match block_on(base.store.put_opts(key, payload.into(), options)) {
+        Ok(_) => Ok(true),
+        Err(object_store::Error::AlreadyExists { .. }) => Ok(false),
+        Err(error) => Err(base.error(key, error)),
+    }
+}
+
+/// Solves both twins in the caller's Rayon pool and publishes only missing outputs.
+fn generate_pair(
+    source: &Source,
+    pair: &TablePair,
+    missing: &[TableId],
+) -> EgtbResult<Vec<TableStats>> {
     let dependency_start = Instant::now();
-    let ids = || std::iter::once(&pair.table).chain(pair.twin.iter());
-    let mut dependencies: Vec<_> = ids().flat_map(|id| id.dependencies()).collect();
+    let mut dependencies: Vec<_> = pair_ids(pair).flat_map(|id| id.dependencies()).collect();
     dependencies.sort();
     dependencies.dedup();
     let reader = BatchReader::open(source, &dependencies)?;
@@ -80,9 +162,8 @@ fn generate_pair(source: &Source, pair: &TablePair) -> EgtbResult<Vec<TableStats
     let dependency_time = dependency_start.elapsed();
 
     let base = source.base();
-    base.ensure_writable()?;
     let setup_start = Instant::now();
-    let mut tables = ids()
+    let mut tables = pair_ids(pair)
         .map(|id| TableState::new(TableIndexer::new(id)))
         .collect::<EgtbResult<Vec<_>>>()?;
     let setup_time = setup_start.elapsed();
@@ -90,8 +171,11 @@ fn generate_pair(source: &Source, pair: &TablePair) -> EgtbResult<Vec<TableStats
     let init_time = setup_time + timings.init;
 
     let finalize_start = Instant::now();
-    let mut stats = Vec::with_capacity(tables.len());
-    for (id, table) in ids().zip(tables) {
+    let mut stats = Vec::with_capacity(missing.len());
+    for (id, table) in pair_ids(pair).zip(tables) {
+        if !missing.contains(id) {
+            continue;
+        }
         let (egt, values, maxima, invalid) = table.into_parts();
         println!("{id}: finalizing outcomes, statistics and compression...");
         stats.push(finalization::finalize_table(
@@ -100,7 +184,10 @@ fn generate_pair(source: &Source, pair: &TablePair) -> EgtbResult<Vec<TableStats
     }
     let finalize_time = finalize_start.elapsed();
     let total_time = dependency_time + init_time + timings.propagation + finalize_time;
-    let names = ids().map(|id| id.name()).collect::<Vec<_>>().join(", ");
+    let names = pair_ids(pair)
+        .map(TableId::name)
+        .collect::<Vec<_>>()
+        .join(", ");
     println!(
         "{}: phase timings: dependencies {:.3}s, init {:.3}s, propagation {:.3}s, finalize/publish {:.3}s, total {:.3}s.",
         names,
@@ -118,9 +205,8 @@ fn generate_pair(source: &Source, pair: &TablePair) -> EgtbResult<Vec<TableStats
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::selection::TableSelector;
-    use crate::storage::Location;
-    use crate::table_id::TableId;
     use crate::{EgtbError, Tablebase};
 
     #[test]
@@ -136,7 +222,31 @@ mod tests {
         for name in ["K_K", "KQ_K", "K_KQ"] {
             let id = TableId::parse(name).unwrap();
             assert!(!dir.0.join(id.relative_path("ggegtb")).exists());
+            assert!(!dir.0.join(id.relative_path("lock")).exists());
         }
+    }
+
+    #[test]
+    fn a_pair_locked_via_one_twin_is_busy_via_the_other() {
+        let dir = crate::TestDir::new("busy_pair");
+        let location = Location::parse(&dir.0).unwrap();
+        location.ensure_format().unwrap();
+        let pair = plan_pairs([TableId::parse("K_KQ").unwrap()]).pop().unwrap();
+        let lock = pair_lock_key(&location, &pair);
+        std::thread::scope(|scope| {
+            let contender = scope.spawn(|| try_lock(&location, &lock).unwrap());
+            let acquired = try_lock(&location, &lock).unwrap();
+            assert_ne!(acquired, contender.join().unwrap());
+        });
+
+        let mut generator = Tablebase::new(&dir.0).unwrap();
+        assert!(generator.generate(&["KQ_K"]).unwrap().is_empty());
+        assert_eq!(missing_outputs(&location, &pair).unwrap().len(), 2);
+        assert!(!try_lock(&location, &lock).unwrap());
+
+        block_on(location.store.delete(&lock)).unwrap();
+        assert_eq!(generator.generate(&["K_K", "KQ_K"]).unwrap().len(), 3);
+        assert!(try_lock(&location, &lock).unwrap());
     }
 
     #[test]

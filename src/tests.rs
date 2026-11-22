@@ -152,8 +152,8 @@ fn probing_rejects_castling_rights_before_table_lookup() {
 }
 
 #[test]
-fn generation_invalidates_cached_probe_data() {
-    let dir = TestDir::new("generation_invalidates_cache");
+fn generation_skips_existing_self_twin() {
+    let dir = TestDir::new("generation_existing_self_twin");
     let win = DtcOutcome::Win(ConversionType::Checkmate, 3);
     crate::table_file::writer::write_fixture(&dir.0, "K_K", |_| {
         PackedOutcome::new_win(ConversionType::Checkmate, 3)
@@ -162,8 +162,32 @@ fn generation_invalidates_cached_probe_data() {
     let position = position_for("K_K");
     assert_eq!(tablebase.probe(&position).unwrap(), win);
 
-    tablebase.generate(&["K_K"]).unwrap();
-    assert_eq!(tablebase.probe(&position).unwrap(), DtcOutcome::Draw);
+    assert!(tablebase.generate(&["K_K"]).unwrap().is_empty());
+    assert!(!table_path(&dir.0, "K_K", "json").exists());
+    assert_eq!(test_generator(&dir.0).probe(&position).unwrap(), win);
+}
+
+#[test]
+fn generation_only_publishes_the_missing_twin() {
+    let dir = TestDir::new("generation_missing_twin");
+    let mut generator = test_generator(&dir.0);
+    generator.generate(&["K_K"]).unwrap();
+    crate::table_file::writer::write_fixture(&dir.0, "K_KQ", |_| PackedOutcome::DRAW);
+    let table = table_path(&dir.0, "K_KQ", "ggegtb");
+    let original = std::fs::read(&table).unwrap();
+    let stats = table_path(&dir.0, "K_KQ", "json");
+    std::fs::write(&stats, b"existing sidecar").unwrap();
+
+    let generated = generator.generate(&["K_KQ"]).unwrap();
+    assert_eq!(generated.len(), 1);
+    assert_eq!(generated[0].tablename, "KQ_K");
+    assert!(table_path(&dir.0, "KQ_K", "ggegtb").exists());
+    assert!(table_path(&dir.0, "KQ_K", "json").exists());
+
+    std::fs::remove_file(table_path(&dir.0, "K_K", "ggegtb")).unwrap();
+    assert!(generator.generate(&["KQ_K"]).unwrap().is_empty());
+    assert_eq!(std::fs::read(table).unwrap(), original);
+    assert_eq!(std::fs::read(stats).unwrap(), b"existing sidecar");
 }
 
 #[test]

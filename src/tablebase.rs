@@ -117,13 +117,12 @@ impl Tablebase {
         })
     }
 
-    /// Generates twin-pair jobs in the base location, ordered by pieces then pawns.
+    /// Generates missing tables in the base location, ordered by pieces then pawns.
+    /// Skips complete or locked twin pairs and returns stats only for newly published tables.
     /// Capture/promotion dependencies must already exist or be explicitly selected.
     /// Working arrays and each pair's eagerly loaded dependencies must fit in memory.
-    /// Clears the probe cache before any tables can be replaced.
     pub fn generate(&mut self, selectors: &[&str]) -> EgtbResult<Vec<TableStats>> {
         let pool = thread_pool(self.threads)?;
-        self.cache.clear();
         generator::generate(self.source(), &pool, selectors)
     }
 

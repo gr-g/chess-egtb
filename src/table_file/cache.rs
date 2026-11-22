@@ -214,7 +214,7 @@ impl SharedFileCache {
         Ok(outcomes)
     }
 
-    pub(crate) fn clear(&mut self) {
+    fn clear(&mut self) {
         self.files.get_mut().unwrap().clear();
         let lru = self.frames.get_mut().unwrap();
         lru.map = HashMap::new();
