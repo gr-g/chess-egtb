@@ -85,11 +85,11 @@ with 2 threads and without including verification.
 | Pieces | Index positions | Elapsed time (on 2 threads) | Allocated core-hours | μs per index position |
 |---|---:|---:|---:|---:|
 | 3 | 416,640 | < 1 s | — | — |
-| 4 | 155,965,898 | 1 m 33 s | 0.05 | 1.20 |
-| 5 | 35,268,305,340 | 5 h 57 m 53 s | 11.93 | 1.22 |
+| 4 | 155,965,898 | 1 m 32 s | 0.05 | 1.18 |
+| 5 | 35,268,305,340 | 5 h 46 m 17 s | 11.54 | 1.18 |
 
 From four to five pieces, index positions grow 226× and generation time grows
-230×: the cost per index position rises only marginally.
+by a very similar amount.
 
 Assuming a value of `1.30` μs per index position for larger sets, and assuming a
 cost for cloud compute resources in the range $0.03-$0.05 per core-hour (as of

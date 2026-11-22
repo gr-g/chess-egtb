@@ -17,17 +17,17 @@ See the design specifications in `README.md` for more information.
 Current tablebase generation results:
 ```
 == All 3 pieces, 2 threads ==
-Generated 16 tables: 367868 unique positions in 00h:00m:01s (4.84 μs/index on 2 threads).
+Generated 16 tables: 367868 unique positions in 00h:00m:01s (4.83 μs/index on 2 threads).
 Compressed size: 0.04 MiB (0.84 bits/pos). Lowest compression: KQ_K (2.05 bits/pos).
 ```
 ```
 == All 4 pieces, 2 threads ==
-Generated 176 tables: 125132316 unique positions in 00h:01m:33s (1.20 μs/index on 2 threads).
+Generated 176 tables: 125132316 unique positions in 00h:01m:32s (1.18 μs/index on 2 threads).
 Compressed size: 12.19 MiB (0.82 bits/pos). Lowest compression: KB_KQ (3.42 bits/pos).
 ```
 ```
 == All 5 pieces, 2 threads ==
-Generated 1496 tables: 25880730473 unique positions in 05h:57m:53s (1.22 μs/index on 2 threads).
+Generated 1496 tables: 25880730473 unique positions in 05h:46m:17s (1.18 μs/index on 2 threads).
 Compressed size: 3289.07 MiB (1.07 bits/pos). Lowest compression: KBB_KQ (3.80 bits/pos).
 ```
 
