@@ -31,14 +31,13 @@ fn verify_tables(source: &Source, ids: &[TableId]) -> EgtbResult<(usize, usize)>
     let mut unique_positions = 0;
     let mut index_range = 0;
     for id in ids {
-        let file = source.open(id)?;
+        let (file, frames) = source.load(id)?;
         let mut dependencies = id.dependencies();
         dependencies.push(id.twin().0);
         dependencies.retain(|dependency| dependency != id);
         dependencies.sort();
         dependencies.dedup();
         let mut reader = BatchReader::open(source, &dependencies)?;
-        let frames = file.read_all()?;
         reader.insert(file, frames);
         println!(
             "{}: loaded {} bytes of dependencies.",

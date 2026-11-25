@@ -1,7 +1,7 @@
 use super::*;
 use crate::outcome::PackedOutcome;
 use crate::storage::Location;
-use crate::table_file::TableFile;
+use crate::table_file::Source;
 use shakmaty::{Chess, Color, Position};
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -49,8 +49,9 @@ fn verification_distinguishes_exact_tables_from_material_families() {
         names.iter().map(|name| name.as_str()).collect()
     );
     assert_eq!(pawn_tables.len(), 8);
+    let source = Source::new(Location::parse(&dir.0).unwrap());
     for id in &expected {
-        let file = TableFile::open(&Location::parse(&dir.0).unwrap(), id).unwrap();
+        let file = source.open(id).unwrap();
         assert_eq!(file.egt().id(), *id);
     }
     tablebase.verify(&["KR_K", "K_KR", "KP_K", "K_KP"]).unwrap();

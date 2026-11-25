@@ -1,4 +1,4 @@
-use std::collections::{HashMap, hash_map::Entry};
+use std::collections::{HashMap, HashSet};
 
 use rayon::prelude::*;
 use shakmaty::Chess;
@@ -17,26 +17,20 @@ pub(crate) struct BatchReader {
 }
 
 impl BatchReader {
-    /// Opens all metadata first, so missing dependencies fail before bulk loading.
+    /// Loads distinct dependencies in parallel, fetching each table as a whole.
     pub(crate) fn open(source: &Source, ids: &[TableId]) -> EgtbResult<Self> {
-        let mut files = HashMap::new();
-        for &id in ids {
-            if let Entry::Vacant(entry) = files.entry(id) {
-                let file = source.open(&id).map_err(|source| match source {
+        let ids: HashSet<_> = ids.iter().copied().collect();
+        let files = ids
+            .into_par_iter()
+            .map(|id| {
+                let table = source.load(&id).map_err(|source| match source {
                     EgtbError::FileNotFound(_) => EgtbError::DependencyUnavailable {
                         dependency: id.to_string(),
                         source: Box::new(source),
                     },
                     other => other,
                 })?;
-                entry.insert(file);
-            }
-        }
-        let files = files
-            .into_par_iter()
-            .map(|(id, file)| {
-                let frames = file.read_all()?;
-                Ok((id, (file, frames)))
+                Ok((id, table))
             })
             .collect::<EgtbResult<_>>()?;
         Ok(Self { files })
@@ -128,7 +122,7 @@ mod tests {
             .into_position(CastlingMode::Standard)
             .unwrap();
         assert_eq!(batch.probe(&position).unwrap(), PackedOutcome::DRAW);
-        let frames = file.read_all().unwrap();
+        let (file, frames) = source.with_input(None).load(&id).unwrap();
         batch.insert(file, frames);
         assert_eq!(batch.probe(&position).unwrap(), output);
     }

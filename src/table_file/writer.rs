@@ -186,7 +186,7 @@ pub(crate) fn write_fixture(
     encoder.finish().unwrap();
     let key = location.key(&id.relative_path("ggegtb"));
     publish_buffers(&location, &key, [data.into()]).unwrap();
-    crate::table_file::TableFile::open(&location, &id).unwrap()
+    super::Source::new(location).open(&id).unwrap()
 }
 
 #[cfg(test)]
