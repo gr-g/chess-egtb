@@ -411,7 +411,7 @@ impl TableIndexer {
 
     /// Positions per compressed frame; identical-piece groups may cross boundaries.
     pub(crate) fn frame_size(&self) -> usize {
-        self.summary_block_size() * (67 - self.n_pieces()) * 2
+        self.summary_block_size() * (67 - self.n_pieces()) * 4
     }
 
     /// The number of pawns in this table's material.
@@ -965,13 +965,13 @@ mod tests {
     #[test]
     fn table_specific_block_sizes() {
         for (name, pieces, pawns, summary, frame) in [
-            ("K_K", 2, 0, 4032, 524160),
-            ("KQ_K", 3, 0, 3906, 499968),
-            ("KQ_KR", 4, 0, 3782, 476532),
-            ("KBBB_K", 5, 0, 3660, 453840),
-            ("KPaPa_KPb", 5, 3, 3660, 453840),
-            ("KQQPaoPa_KPao", 7, 3, 3422, 410640),
-            ("KNNNNNN_K", 8, 0, 3306, 390108),
+            ("K_K", 2, 0, 4032, 1048320),
+            ("KQ_K", 3, 0, 3906, 999936),
+            ("KQ_KR", 4, 0, 3782, 953064),
+            ("KBBB_K", 5, 0, 3660, 907680),
+            ("KPaPa_KPb", 5, 3, 3660, 907680),
+            ("KQQPaoPa_KPao", 7, 3, 3422, 821280),
+            ("KNNNNNN_K", 8, 0, 3306, 780216),
         ] {
             let indexer = TableIndexer::new(&TableId::parse(name).unwrap());
             assert_eq!(indexer.id().name().as_str(), name);

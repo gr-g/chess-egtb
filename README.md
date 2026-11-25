@@ -565,7 +565,7 @@ Each canonical table is one seekable Zstd object (via `zeekstd`).
 
 The format of the compressed tables (`.ggegtb`) has the following characteristics:
 - The uncompressed data is split into frames of
-  `2 * (65 - n) * (66 - n) * (67 - n)` positions, where `n` counts all pieces,
+  `4 * (65 - n) * (66 - n) * (67 - n)` positions, where `n` counts all pieces,
   including pawns and kings. Frames are compressed independently, allowing
   seekable random access; the final frame may contain fewer positions.
 - A seek table (without checksum) of `17 + 8 * num_frames` bytes is appended
