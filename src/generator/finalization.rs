@@ -52,7 +52,7 @@ fn finalize_batch(
             );
             plain.push(outcome);
         }
-        encode_frame(&mut encoder, &plain)?;
+        stats.record_frame(encode_frame(&mut encoder, &plain)?);
         frame_lengths.push(plain.len());
     }
     // into_seek_table does not flush, and finish would append a per-batch footer.
@@ -107,6 +107,33 @@ pub(super) fn finalize_table(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn counts_encoded_palettes_including_invalid_and_short_frames() {
+        let id = TableId::parse("KQ_K").unwrap();
+        let egt = TableIndexer::new(&id);
+        let wins = (0..256)
+            .map(|distance| PackedOutcome::new_win(crate::ConversionType::Checkmate, distance));
+        let mut values: Vec<_> = wins
+            .chain(std::iter::once(PackedOutcome::INVALID))
+            .chain([PackedOutcome::DRAW, PackedOutcome::new_unknown(1)])
+            .map(|outcome| AtomicU16::new(outcome.to_u16()))
+            .collect();
+        let (segment, stats) =
+            finalize_batch(&mut values, 0, &egt, 257, WinLoss::default()).unwrap();
+        assert_eq!(segment.frame_lengths, [257, 2]);
+        let stats = stats.build(
+            &egt,
+            WinLoss::default(),
+            InvalidCounts::default(),
+            0,
+            String::new(),
+        );
+        assert_eq!(
+            stats.totals.num_frames_by_distinct_outcomes,
+            [(1, 1), (512, 1)].into()
+        );
+    }
 
     #[test]
     fn wrong_length_does_not_publish() {

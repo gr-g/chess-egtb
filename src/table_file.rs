@@ -471,11 +471,9 @@ mod tests {
         // A correct payload with an extra empty frame has the wrong frame count.
         let output = std::fs::File::create(table_path(&dir.0, "K_K")).unwrap();
         let mut encoder = zeekstd::EncodeOptions::new().into_encoder(output).unwrap();
-        encoder
-            .compress(
-                &frame::encode(&vec![PackedOutcome::INVALID; file.egt.index_range()]).unwrap(),
-            )
-            .unwrap();
+        let (data, _) =
+            frame::encode(&vec![PackedOutcome::INVALID; file.egt.index_range()]).unwrap();
+        encoder.compress(&data).unwrap();
         encoder.end_frame().unwrap();
         encoder.finish().unwrap();
         assert!(open_local(&dir.0, "K_K").is_err());

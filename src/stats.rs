@@ -24,6 +24,8 @@ pub struct LongestDtcPosition {
 pub struct Totals {
     pub bytes: u64,
     pub num_frames: usize,
+    /// Frame counts by inclusive palette-size bound: 1, 256, 512, ..., 65536.
+    pub num_frames_by_distinct_outcomes: BTreeMap<usize, usize>,
     pub unique_positions: usize,
     pub win: usize,
     pub draw: usize,
@@ -265,6 +267,12 @@ impl Totals {
     pub(crate) fn add(&mut self, other: &Self) {
         self.bytes += other.bytes;
         self.num_frames += other.num_frames;
+        for (&upper, &count) in &other.num_frames_by_distinct_outcomes {
+            *self
+                .num_frames_by_distinct_outcomes
+                .entry(upper)
+                .or_default() += count;
+        }
         self.unique_positions += other.unique_positions;
         self.win += other.win;
         self.draw += other.draw;
@@ -288,6 +296,20 @@ impl Totals {
     }
 
     fn validate(&self, index_range: usize) -> EgtbResult<()> {
+        let frame_count = self.num_frames_by_distinct_outcomes.iter().try_fold(
+            0usize,
+            |sum, (&upper, &count)| {
+                if count == 0
+                    || (upper != 1 && !(upper.is_power_of_two() && (256..=65536).contains(&upper)))
+                {
+                    return None;
+                }
+                sum.checked_add(count)
+            },
+        );
+        if frame_count != Some(self.num_frames) {
+            return Err(invalid_data("invalid distinct-outcome frame histogram"));
+        }
         validate_outcomes(
             index_range,
             self.unique_positions,
@@ -448,6 +470,7 @@ mod tests {
             totals: Totals {
                 bytes: 100,
                 num_frames: 1,
+                num_frames_by_distinct_outcomes: BTreeMap::from([(256, 1)]),
                 unique_positions: 6,
                 win: 3,
                 draw: 1,
@@ -492,9 +515,15 @@ mod tests {
                 serde_json::from_value::<StatsRecord>(json.clone()).unwrap(),
                 record
             );
-            for field in ["bytes", "sha256", "histogram_win", "longest_dtc_loss"]
-                .into_iter()
-                .chain(PARTITION_FIELDS)
+            for field in [
+                "bytes",
+                "sha256",
+                "histogram_win",
+                "longest_dtc_loss",
+                "num_frames_by_distinct_outcomes",
+            ]
+            .into_iter()
+            .chain(PARTITION_FIELDS)
             {
                 let mut invalid = json.clone();
                 invalid.as_object_mut().unwrap().remove(field);
@@ -559,6 +588,10 @@ mod tests {
         );
         let totals = total.totals.as_ref().unwrap();
         assert_eq!((totals.bytes, totals.unique_positions), (200, 12));
+        assert_eq!(
+            totals.num_frames_by_distinct_outcomes,
+            BTreeMap::from([(256, 2)])
+        );
         assert_eq!(totals.invalid_opposite_check, 2);
         assert_eq!(totals.invalid_ep_squares_occupied, 4);
         assert_eq!(totals.invalid_illegal_ep_capture, 6);
@@ -610,6 +643,19 @@ mod tests {
             json[field] = 0.into();
             let invalid: TableStats = serde_json::from_value(json).unwrap();
             assert!(invalid.validate(&id).is_err(), "{field}");
+        }
+        for buckets in [
+            BTreeMap::new(),
+            BTreeMap::from([(256, 2)]),
+            BTreeMap::from([(256, 1), (512, 0)]),
+            BTreeMap::from([(128, 1)]),
+            BTreeMap::from([(257, 1)]),
+            BTreeMap::from([(131072, 1)]),
+            BTreeMap::from([(1, 1), (256, usize::MAX)]),
+        ] {
+            let mut invalid = stats();
+            invalid.totals.num_frames_by_distinct_outcomes = buckets;
+            assert!(invalid.validate(&id).is_err());
         }
         let mut invalid = stats();
         invalid.sha256.clear();

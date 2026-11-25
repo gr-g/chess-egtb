@@ -86,7 +86,7 @@ impl Frame {
     }
 }
 
-pub(super) fn encode(values: &[PackedOutcome]) -> EgtbResult<Vec<u8>> {
+pub(super) fn encode(values: &[PackedOutcome]) -> EgtbResult<(Vec<u8>, usize)> {
     if values.is_empty() {
         return Err(EgtbError::Internal("cannot encode an empty frame"));
     }
@@ -125,7 +125,7 @@ pub(super) fn encode(values: &[PackedOutcome]) -> EgtbResult<Vec<u8>> {
                 .map(|value| (ranks[value.to_u16() as usize] >> 8) as u8),
         );
     }
-    Ok(data)
+    Ok((data, d))
 }
 
 /// Checks all three index widths without allocating or overflowing on metadata.
@@ -159,7 +159,8 @@ mod tests {
             let values: Vec<_> = (0..d)
                 .map(|i| PackedOutcome::from_u16(u16::MAX - i))
                 .collect();
-            let data = encode(&values).unwrap();
+            let (data, distinct) = encode(&values).unwrap();
+            assert_eq!(distinct, d as usize);
             assert_eq!(
                 data.len() as u128,
                 serialized_length(d as usize, values.len())
@@ -179,7 +180,8 @@ mod tests {
             assert_eq!(frame.get(values.len() - 1), *values.last().unwrap());
         }
         let values = [65535, 0, 8, 65535, 8].map(PackedOutcome::from_u16);
-        let data = encode(&values).unwrap();
+        let (data, distinct) = encode(&values).unwrap();
+        assert_eq!(distinct, 3);
         assert_eq!(data, [3, 0, 8, 0, 255, 255, 0, 0, 1, 2, 0, 1, 0]);
         let frame = Frame::decode(data, values.len()).unwrap();
         assert_eq!(frame.expand(1..5).unwrap(), values[1..]);
@@ -205,7 +207,7 @@ mod tests {
             assert!(Frame::decode(data, len).is_err());
         }
         let values: Vec<_> = (0..257).map(PackedOutcome::from_u16).collect();
-        let mut data = encode(&values).unwrap();
+        let (mut data, _) = encode(&values).unwrap();
         data[2 + 2 * 257] = 1;
         data[2 + 3 * 257] = 1;
         assert!(Frame::decode(data, 257).is_err());

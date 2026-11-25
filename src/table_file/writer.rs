@@ -150,10 +150,11 @@ fn publish_buffers(
 pub(crate) fn encode_frame<W: Write>(
     encoder: &mut zeekstd::Encoder<'_, W>,
     values: &[PackedOutcome],
-) -> EgtbResult<()> {
-    encoder.compress(&frame::encode(values)?)?;
+) -> EgtbResult<usize> {
+    let (data, distinct) = frame::encode(values)?;
+    encoder.compress(&data)?;
     encoder.end_frame()?;
-    Ok(())
+    Ok(distinct)
 }
 
 /// Publishes arbitrary outcomes, including deliberately corrupt test data.
@@ -178,7 +179,8 @@ pub(crate) fn write_fixture(
         let values: Vec<_> = (start..length.min(start + frame_size))
             .map(&outcome)
             .collect();
-        encoder.compress(&frame::encode(&values).unwrap()).unwrap();
+        let (data, _) = frame::encode(&values).unwrap();
+        encoder.compress(&data).unwrap();
         if start + values.len() < length {
             encoder.end_frame().unwrap();
         }
@@ -219,7 +221,8 @@ mod tests {
         let mut expected = Vec::new();
         let mut serial = options().into_encoder(&mut expected).unwrap();
         for frame in values.chunks(writer.frame_size) {
-            serial.compress(&frame::encode(frame).unwrap()).unwrap();
+            let (data, _) = frame::encode(frame).unwrap();
+            serial.compress(&data).unwrap();
             serial.end_frame().unwrap();
         }
         serial.flush().unwrap();

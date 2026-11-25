@@ -16,6 +16,19 @@ pub(super) struct StatsAccumulator {
 }
 
 impl StatsAccumulator {
+    pub(super) fn record_frame(&mut self, distinct: usize) {
+        let upper = if distinct == 1 {
+            1
+        } else {
+            distinct.max(256).next_power_of_two()
+        };
+        *self
+            .totals
+            .num_frames_by_distinct_outcomes
+            .entry(upper)
+            .or_default() += 1;
+    }
+
     /// Use the same table maxima for every record in a batch and for its merge.
     pub(super) fn record_outcome(
         &mut self,
