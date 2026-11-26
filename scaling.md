@@ -53,7 +53,9 @@ double requirements compared to the size in memory of the table-pair. Complex
 schemes could be devised to re-encode and keep in memory only the relevant
 parts of the promotion dependencies, since only a small percentage of the
 positions stored in those dependencies are actually reachable by a promotion
-move, but this is currently not planned.
+move, but this is currently not planned. For the smaller sets, a fixed cost per
+thread due to various buffers and overheads is also relevant (adding a few GBs
+to the memory estimates).
 
 For **table verification**, the theoretical model is reversed: the required
 dependencies - including the "twin" table - are allocated in memory during the
@@ -66,11 +68,11 @@ The table below shows the worst-case requirements for table-pair generation.
 
 | Pieces | Index positions | Largest table-pair | Worst-case memory estimate |
 |---|---:|---:|---:|
-| 3 | 416,640 | 0.11 MB | <1 GB |
-| 4 | 155,965,898 | 6.99 MB | <1 GB |
-| 5 | 35,268,305,340 | 0.42 GB | ~1 GB |
-| 6 | 5,606,162,736,600 | 24.7 GB | ~50 GB |
-| 7 | 679,345,381,690,216 | 1.44 TB | ~3 TB |
+| 3 | 416,640 | 0.11 MB | <1 GB (+fixed cost)|
+| 4 | 155,965,898 | 6.99 MB | <1 GB (+fixed cost)|
+| 5 | 35,268,305,340 | 0.42 GB | ~1 GB (+fixed cost)|
+| 6 | 5,606,162,736,600 | 24.7 GB | ~50 GB (+fixed cost)|
+| 7 | 679,345,381,690,216 | 1.44 TB | ~3 TB (+fixed cost)|
 
 All 6-piece jobs fit confortably on a server with 64 GB of memory. Seven-piece
 jobs have a heavy-tailed size distribution: the median job needs about 2 GB of
@@ -85,8 +87,8 @@ with 2 threads and without verification.
 | Pieces | Index positions | Elapsed time (on 2 threads) | Allocated core-hours | μs per index position |
 |---|---:|---:|---:|---:|
 | 3 | 416,640 | < 1 s | — | — |
-| 4 | 155,965,898 | 1 m 32 s | 0.05 | 1.18 |
-| 5 | 35,268,305,340 | 5 h 46 m 17 s | 11.54 | 1.18 |
+| 4 | 155,965,898 | 1 m 33 s | 0.05 | 1.19 |
+| 5 | 35,268,305,340 | 5 h 49 m 18 s | 11.64 | 1.19 |
 
 From four to five pieces, index positions grow 226× and generation time grows
 by a very similar amount.
@@ -120,8 +122,8 @@ compression for tables up to 5 pieces.
 | Pieces | Compressed size | Bits / index position | Bits / unique position |
 |---|---:|---:|--:|
 | 3 | 0.04 MiB | 0.74 | 0.84 |
-| 4 | 12.19 MiB | 0.66 | 0.82 |
-| 5 | 3.289 GiB | 0.78 | 1.07 |
+| 4 | 11.63 MiB | 0.63 | 0.78 |
+| 5 | 3.078 GiB | 0.75 | 1.02 |
 
 Let's assume `0.90` bits per index position at 6 pieces and `1.00` bits per
 index position at 7 pieces. Let's also assume a cost for cloud storage in the
