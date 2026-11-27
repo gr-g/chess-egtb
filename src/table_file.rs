@@ -13,6 +13,7 @@ use crate::storage::{Location, block_on};
 use crate::table_id::TableId;
 use bytes::Bytes;
 use object_store::{GetOptions, GetRange, ObjectStoreExt, path::Path as ObjectPath};
+use rayon::prelude::*;
 use shakmaty::Chess;
 
 /// Resolves existing tables with input-first, missing-only fallback.
@@ -45,11 +46,12 @@ impl Source {
         self.read(egt, Some(range)).map(|(file, _)| file)
     }
 
-    /// Fetches the whole object once and decodes its frames in order.
+    /// Fetches the whole object once and decodes frames in parallel, preserving order.
     pub(crate) fn load(&self, id: &TableId) -> EgtbResult<(TableFile, Vec<Frame>)> {
         let (file, bytes) = self.read(TableIndexer::new(id), None)?;
         let table = &file.seek_table;
         let frames = (0..file.num_frames())
+            .into_par_iter()
             .map(|frame| {
                 let start = table.frame_start_comp(frame as u32)? as usize;
                 let end = table.frame_end_comp(frame as u32)? as usize;
