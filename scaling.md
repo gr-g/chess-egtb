@@ -87,8 +87,8 @@ with 2 threads and without verification.
 | Pieces | Index positions | Elapsed time (on 2 threads) | Allocated core-hours | μs per index position |
 |---|---:|---:|---:|---:|
 | 3 | 416,640 | < 1 s | — | — |
-| 4 | 155,965,898 | 1 m 33 s | 0.05 | 1.19 |
-| 5 | 35,268,305,340 | 5 h 49 m 18 s | 11.64 | 1.19 |
+| 4 | 155,965,898 | 1 m 30 s | 0.05 | 1.16 |
+| 5 | 35,268,305,340 | 5 h 44 m 17 s | 11.48 | 1.17 |
 
 From four to five pieces, index positions grow 226× and generation time grows
 by a very similar amount.
